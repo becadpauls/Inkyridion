@@ -117,9 +117,39 @@ const Lib = (() => {
   const IGNORE = /[​-‍︎️]/;
   function winBytes(s, bad) { const out = []; for (const ch of String(s ?? '').normalize('NFC')) { const c = ch.codePointAt(0); if (c === 9) { out.push(32, 32, 32, 32); continue; } if (c === 10 || c === 13 || IGNORE.test(ch)) continue; if ((c >= 32 && c <= 126) || (c >= 160 && c <= 255)) out.push(c); else if (WIN[c]) out.push(WIN[c]); else { if (bad) bad.add(ch); out.push(63); } } return out; }
   const rgb = x => [1, 3, 5].map(i => (parseInt(x.slice(i, i + 2), 16) / 255).toFixed(3)).join(' ');
+
+  /* ---------- Project color guide (shared by the app, record PDFs, and reports) ---------- */
+  const PAL = {
+    cotton: '#f2eadc', greenOnyx: '#989a82', oakmoss: '#5e5a30', moodyBlue: '#5f8293', seaworthy: '#0e3f52',
+    sage: '#8c9868', lavender: '#8e6a7c', clay: '#c27d5c', moss: '#857634', slate: '#4a5d6b'
+  };
+  const PAL_NAMES = {
+    cotton: ['Cotton', 'SW 9581'], greenOnyx: ['Green Onyx', 'SW 9128'], oakmoss: ['Oakmoss', 'SW 6180'], moodyBlue: ['Moody Blue', 'SW 6221'], seaworthy: ['Seaworthy', 'SW 7620'],
+    sage: ['Sage', 'Earthy Green'], lavender: ['Lavender', 'Soft Plum'], clay: ['Clay', 'Terracotta Rose'], moss: ['Moss', 'Deep Olive'], slate: ['Slate', 'Graphite Blue-Gray']
+  };
+  /* Document chrome uses the core palette; one palette color per record group keeps coding simple. */
+  const DOC = { band: PAL.cotton, head: PAL.seaworthy, accent: PAL.moodyBlue, ink: '#1f2a30', label: PAL.slate, light: '#f7f2e9', zebra: '#fbf8f2', rule: '#ddd5c6', grid: '#cfc6b4' };
+  const lum = h => { const c = [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16) / 255).map(v => v <= .03928 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4); return .2126 * c[0] + .7152 * c[1] + .0722 * c[2]; };
+  /* Darkens a palette color just enough for readable text on white (WCAG AA, 4.5:1). */
+  function inkOf(h) { let t = 0, x = h; const shade = k => '#' + [1, 3, 5].map(i => Math.round(parseInt(h.slice(i, i + 2), 16) * (1 - k)).toString(16).padStart(2, '0')).join(''); while (1.05 / (lum(x) + .05) < 4.6 && t < .9) { t += .04; x = shade(t); } return x; }
+  const CAT = {
+    incident: 'clay', concerns: 'lavender', comms: 'moodyBlue', police: 'seaworthy', evidence: 'slate',
+    parenting: 'sage', care: 'greenOnyx', finance: 'moss', court: 'oakmoss'
+  };
+  const catColor = g => { const k = CAT[g]; const color = k ? PAL[k] : '#8a8578'; return { key: k || '', name: k ? PAL_NAMES[k][0] : 'Neutral', color, ink: inkOf(color) }; };
+
+  /* Logo for generated PDFs (JPEG drawn on the Cotton header band). */
+  let LOGO = null;
+  function logo() {
+    if (LOGO !== null) return LOGO; const src = self.INKY_LOGO; if (!src || !src.b64) return (LOGO = false);
+    try { const bin = atob(src.b64); LOGO = { w: src.w, h: src.h, bg: src.bg, obj: `<< /Type /XObject /Subtype /Image /Width ${src.w} /Height ${src.h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${bin.length} >>\nstream\n${bin}\nendstream` }; } catch { LOGO = false; }
+    return LOGO;
+  }
+
   function pdf(opts = {}) {
-    const W = 612, H = 792, ML = 54, MR = 558, CW = MR - ML, TOP = 62, BOT = 58;
-    const NAVY = '#26262b', INK = '#1c2333', SLATE = '#4f5a6d', LIGHT = '#f2f4f7', RULE = '#d9dee6';
+    const W = 612, H = 792, ML = 54, MR = 558, CW = MR - ML, TOP = 70, BOT = 58, BAND = 50;
+    const NAVY = DOC.head, INK = DOC.ink, SLATE = DOC.label, LIGHT = DOC.light, RULE = DOC.rule;
+    const LG = opts.logo === false ? null : logo(); let usedLogo = false;
     const accent = opts.accent || NAVY; const bad = new Set(); const pages = []; let ops = null, y = 0;
     const tw = (s, size, bold) => { let u = 0; const tab = bold ? HB : HN; for (const b of winBytes(s)) u += b >= 32 && b <= 126 ? tab[b - 32] : (WX[b] || (b >= 192 && b <= 222 ? 722 : bold ? 611 : 556)); return u * size / 1000; };
     const lit = s => winBytes(s, bad).map(b => b === 40 || b === 41 || b === 92 ? '\\' + String.fromCharCode(b) : b < 128 ? String.fromCharCode(b) : '\\' + b.toString(8).padStart(3, '0')).join('');
@@ -131,15 +161,19 @@ const Lib = (() => {
       rect(x, top, w, hh, col) { ops.push(`${rgb(col)} rg ${x.toFixed(2)} ${(H - top - hh).toFixed(2)} ${w.toFixed(2)} ${hh.toFixed(2)} re f`); },
       box(x, top, w, hh, col, lw = .6) { ops.push(`${rgb(col)} RG ${lw} w ${x.toFixed(2)} ${(H - top - hh).toFixed(2)} ${w.toFixed(2)} ${hh.toFixed(2)} re S`); },
       line(x1, t1, x2, t2, col = RULE, lw = .6) { ops.push(`${rgb(col)} RG ${lw} w ${x1.toFixed(2)} ${(H - t1).toFixed(2)} m ${x2.toFixed(2)} ${(H - t2).toFixed(2)} l S`); },
+      logo(x, top, hh) { if (!LG) return 0; const ww = hh * LG.w / LG.h; usedLogo = true; ops.push(`q ${ww.toFixed(2)} 0 0 ${hh.toFixed(2)} ${x.toFixed(2)} ${(H - top - hh).toFixed(2)} cm /Im1 Do Q`); return ww; },
+      hasLogo: !!LG,
+      logoW: hh => LG ? hh * LG.w / LG.h : 0,
       room() { return H - BOT - y; },
       ensure(hh) { if (hh > A.room()) A.newPage(); },
       newPage() {
         if (ops) pages.push(ops); ops = [];
         if (opts.watermark > 0) { const g = (1 - 0.13 * Math.min(1, opts.watermark)).toFixed(3); const cx = W / 2, cy = H / 2; for (const r of [70, 130, 190]) ops.push(`${g} ${g} ${g} RG 0.8 w ${cx} ${cy + r} m ${cx + r} ${cy} l ${cx} ${cy - r} l ${cx - r} ${cy} l h S`); ops.push(`${g} ${g} ${g} RG 0.8 w ${cx - 190} ${cy} m ${cx + 190} ${cy} l S ${cx} ${cy - 190} m ${cx} ${cy + 190} l S`); }
-        A.rect(0, 0, W, 5, accent);
-        if (opts.headerLeft) A.text(opts.headerLeft, ML, 32, 8, true, accent);
-        if (opts.headerRight) A.text(opts.headerRight, MR - tw(opts.headerRight, 8.5, true), 32, 8.5, true, NAVY);
-        A.line(ML, 42, MR, 42); y = TOP;
+        A.rect(0, 0, W, BAND, DOC.band); A.rect(0, 0, W, 4, accent); A.rect(0, BAND - 1.2, W, 1.2, DOC.grid);
+        let lx = ML; if (LG) lx += A.logo(ML - 4, 9, 36) + 8;
+        if (opts.headerLeft) A.text(opts.headerLeft, lx, 31, 8, true, NAVY);
+        if (opts.headerRight) A.text(opts.headerRight, MR - tw(opts.headerRight, 8.5, true), 31, 8.5, true, NAVY);
+        y = TOP;
       },
       section(title, col = accent) { A.ensure(80); y += 6; A.rect(ML, y, 4, 16, col); A.text(String(title).toUpperCase(), ML + 12, y + 12.5, 11, true, NAVY); y += 22; A.line(ML, y, MR, y); y += 8; },
       sub(title, col = accent, right = '') { A.ensure(60); y += 8; A.rect(ML, y, CW, 22, col); A.text(title, ML + 8, y + 15, 10.5, true, '#ffffff'); if (right) A.text(right, MR - 8 - tw(right, 9, false), y + 15, 9, false, '#ffffff'); y += 28; },
@@ -160,7 +194,7 @@ const Lib = (() => {
           const cells = r.cells || r; const CL = cells.map((c, i) => wrap(String(c ?? ''), ws[i] - 10, size, cols[i].bold)); let hh = Math.max(...CL.map(l => l.length)) * lh + 8;
           if (hh > A.room()) { A.newPage(); head(); }
           if (hh > A.room()) { const max = Math.floor((A.room() - 8) / lh); CL.forEach((l, i) => { if (l.length > max) CL[i] = l.slice(0, max - 1).concat(['(continued in record section)']); }); hh = max * lh + 8; }
-          if (ri % 2 === 1) A.rect(ML, y, CW, hh, '#f7f8fa');
+          if (ri % 2 === 1) A.rect(ML, y, CW, hh, DOC.zebra);
           if (r.bar) A.rect(ML, y, 3, hh, r.bar);
           let x = ML; CL.forEach((ls, i) => { ls.forEach((s, j) => { if (s) A.text(s, x + 5 + (i === 0 && r.bar ? 2 : 0), y + 12 + j * lh, size, cols[i].bold, (i === 0 && r.color) || INK); }); x += ws[i]; });
           y += hh; A.line(ML, y, MR, y);
@@ -175,12 +209,12 @@ const Lib = (() => {
         const pdfDate = `D:${dt.getFullYear()}${p2(dt.getMonth() + 1)}${p2(dt.getDate())}${p2(dt.getHours())}${p2(dt.getMinutes())}${p2(dt.getSeconds())}${off >= 0 ? '+' : '-'}${p2(Math.floor(Math.abs(off) / 60))}'${p2(Math.abs(off) % 60)}'`;
         const objs = [null, null, null]; const add = s => { objs.push(s); return objs.length - 1; };
         const F1 = add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>'), F2 = add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>');
-        const kids = [];
+        const kids = []; const IM = usedLogo ? add(LG.obj) : 0; const xres = IM ? ` /XObject << /Im1 ${IM} 0 R >>` : '';
         pages.forEach((pg, i) => {
           const left = opts.footer ? opts.footer(i + 1, pages.length) : ''; const right = `Page ${i + 1} of ${pages.length}`;
-          const foot = [`BT /F1 7.4 Tf ${rgb(SLATE)} rg ${ML} 30 Td (${lit(left)}) Tj ET`, `BT /F1 7.4 Tf ${rgb(SLATE)} rg ${(MR - tw(right, 7.4, false)).toFixed(2)} 30 Td (${lit(right)}) Tj ET`];
+          const foot = [`${rgb(RULE)} RG 0.6 w ${ML} 44 m ${MR} 44 l S`, `BT /F1 7.4 Tf ${rgb(SLATE)} rg ${ML} 30 Td (${lit(left)}) Tj ET`, `BT /F1 7.4 Tf ${rgb(SLATE)} rg ${(MR - tw(right, 7.4, false)).toFixed(2)} 30 Td (${lit(right)}) Tj ET`];
           const stream = pg.concat(foot).join('\n'); const sid = add(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`);
-          kids.push(add(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${W} ${H}] /Resources << /Font << /F1 ${F1} 0 R /F2 ${F2} 0 R >> >> /Contents ${sid} 0 R >>`));
+          kids.push(add(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${W} ${H}] /Resources << /Font << /F1 ${F1} 0 R /F2 ${F2} 0 R >>${xres} >> /Contents ${sid} 0 R >>`));
         });
         const info = add(`<< /Title ${u16(meta.title || 'Documentation')} /Subject ${u16(meta.subject || '')} /Keywords ${u16(meta.keywords || '')} /CreationDate (${pdfDate}) /ModDate (${pdfDate}) >>`);
         objs[1] = '<< /Type /Catalog /Pages 2 0 R >>';
@@ -202,10 +236,10 @@ const Lib = (() => {
     const term = chosen && (chosen.raw || chosen.value);
     if (['Event', 'Occurrence', 'Episode', 'Interaction', 'Situation', 'Matter'].includes(term)) return term;
     const prefix = record.prefix || record.category || String(record.id || record.docId || '').replace(/[-0-9].*$/, '');
-    if (['COMM', 'KCT', 'COM', 'EXC', 'POLI', 'PPD'].includes(prefix)) return 'Interaction';
-    if (['CRT'].includes(prefix) || record.financial?.kind === 'matter' || record.typeKey === 'FINMAT') return 'Matter';
+    if (['COMM', 'KCT', 'COM', 'EXC', 'EXCH', 'POLI', 'POL', 'PPD'].includes(prefix)) return 'Interaction';
+    if (['CRT', 'CONC'].includes(prefix) || record.financial?.kind === 'matter' || record.typeKey === 'FINMAT') return 'Matter';
     return 'Event';
   }
 
-  return { recordTerm, enc, dec, toB64, fromB64, hex, latin1, sha256, sniff, readManifest, adaptLegacy, scanPdfText, crc32, zip, unzip, pdf, winBytes };
+  return { PAL, PAL_NAMES, DOC, CAT, catColor, inkOf, logo, recordTerm, enc, dec, toB64, fromB64, hex, latin1, sha256, sniff, readManifest, adaptLegacy, scanPdfText, crc32, zip, unzip, pdf, winBytes };
 })();
