@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#f7f5f1">
+<meta name="description" content="Private documentation: create records, keep them organized, and run court-ready reports">
+<title>Inkyridion</title>
+<link rel="icon" type="image/png" href="assets/icon-192.png">
+<link rel="apple-touch-icon" href="assets/icon-180.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<noscript><p style="padding:20px;font-size:18px">This app needs JavaScript turned on.</p></noscript>
+<div id="fileBanner" class="banner warn hidden" role="note">You opened this file directly from your device. Some browsers block storage and offline use this way. Open it from its web address (https) instead.</div>
+
+<section id="auth" class="auth" aria-labelledby="authTitle">
+  <div class="auth-card">
+    <img class="auth-logo" src="assets/logo.webp" alt="Inkyridion" width="900" height="380">
+    <h1 id="authTitle">Welcome back</h1>
+    <p id="authHint">Loading…</p>
+    <form id="authForm" autocomplete="off" novalidate>
+      <label for="pass">Passphrase</label>
+      <input id="pass" type="password" autocomplete="off" required>
+      <div id="confirmWrap" class="hidden"><label for="pass2">Type it again</label><input id="pass2" type="password" autocomplete="off"></div>
+      <p id="passHelp" class="hint"></p>
+      <button id="authBtn" class="btn primary wide" type="submit">Unlock</button>
+    </form>
+    <p id="authErr" class="error" role="alert"></p>
+    <button id="restoreWelcome" class="btn link hidden" type="button">Restore from an encrypted backup instead</button>
+    <p class="fine">No account. No trackers. Nothing is uploaded. Everything stays encrypted on this device — so keep backups.</p>
+  </div>
+</section>
+
+<div id="app" class="shell hidden">
+  <aside class="side" aria-label="Main">
+    <div class="side-brand"><img src="assets/logo.webp" alt="Inkyridion" width="900" height="380"></div>
+    <nav id="nav">
+      <button class="nav" data-view="record" aria-current="page"><span aria-hidden="true">✎</span><b>Inky</b></button>
+      <button class="nav" data-view="timeline"><span aria-hidden="true">▦</span><b>Ridion</b></button>
+      <button class="nav" data-view="library"><span aria-hidden="true">▤</span><b>Library</b></button>
+      <button class="nav run" data-view="packet"><span aria-hidden="true">▧</span><b>Packets</b></button>
+      <button class="nav" data-view="settings"><span aria-hidden="true">⚙</span><b>Settings</b></button></nav>
+    <div class="side-foot"><button id="lockBtn" class="btn small wide" type="button">Lock</button></div>
+  </aside>
+
+  <main class="main" id="main" tabindex="-1">
+    <section id="v-record" class="view rx" aria-labelledby="hRec">
+      <div class="rec-top"><div><h1 id="hRec">Inky</h1><p>Capture a record</p></div>
+        <ol hidden class="steps" aria-label="Progress"><li id="st1" aria-current="step"><b>1</b>Choose</li><li id="st2"><b>2</b>Describe</li><li id="st3"><b>3</b>Save</li></ol></div>
+      <form id="form" autocomplete="off" novalidate onsubmit="return false">
+        <details class="picker" id="categoryPicker"><summary>Record type <strong id="categoryName">Incident</strong></summary>
+          <div class="cards" id="cards" role="group" aria-label="Record types"></div>
+          <div class="subs hidden" id="subs"><h3 id="subsTitle"></h3><div class="subgrid" id="subgrid" role="group" aria-labelledby="subsTitle"></div></div>
+        </details>
+        <section class="panel hidden" id="describe" aria-labelledby="h2describe">
+          <div class="formhead"><div><div class="typechip" id="typeChip"></div><h2 id="h2describe" class="sr">Record details</h2></div><div class="nextno" id="nextNo" aria-live="polite"></div></div>
+          <p class="lead"></p>
+          <div class="grid" id="essentials"></div>
+          <div class="files" id="filesBlock">
+            <h3 id="filesTitle">Supporting files (optional)</h3>
+            <p id="filesNote"></p>
+            <label class="btn soft filebtn" id="fileBtnLabel"><span id="fileBtnText">＋ Add files</span><input type="file" id="fileInput" multiple aria-labelledby="fileBtnText"></label>
+            <div class="filelist" id="fileList" aria-live="polite"></div>
+            <p class="hint hidden" id="hashWarn" style="margin-top:10px"></p>
+          </div>
+          <details class="more" id="more">
+            <summary><span class="pm" aria-hidden="true">＋</span><span>More details (optional)<small id="moreHint"></small></span></summary>
+            <div class="body">
+              <div class="grid" id="moreFields"></div>
+              <div class="seq hidden" id="seqBlock">
+                <h3>Event sequence <span style="font-weight:450;color:var(--muted)">(optional)</span></h3>
+                <p class="hint">Break the event into moments if the order matters.</p>
+                <div id="seqList"></div>
+                <button type="button" class="btn small soft" id="addMoment" style="margin-top:10px">＋ Add a moment</button>
+              </div>
+            </div>
+          </details>
+        </section>
+        <section class="panel hidden" id="create" aria-labelledby="h3create">
+          <h2 id="h3create">Save the record</h2>
+          <p class="lead">Saving files it in your encrypted library and gives it its number. You can also download or print a copy.</p>
+          <div class="actions">
+            <button type="button" class="btn primary" id="btnSave">Save record</button>
+            <button type="button" class="btn" id="btnDownload">Save &amp; download PDF</button>
+            <button type="button" class="btn" id="btnPrint">Save &amp; print</button>
+            <button type="button" class="btn" id="btnPreview">Preview</button>
+          </div>
+          <div class="status" id="status" role="status"></div>
+          <div class="cleararea">
+            <button type="button" class="btn link" id="btnClear">Start a new record</button>
+            <p class="hint">Clears the form. Saved records stay in your library.</p>
+          </div>
+        </section>
+        <p class="pickfirst" id="pickFirst">Choose a type above to begin.</p>
+      </form>
+      <div class="run-bar"><button type="button" class="btn bronze" id="btnRun">Prepare a packet</button></div>
+    </section>
+
+    <section id="v-library" class="view hidden" aria-labelledby="hLib">
+      <div class="head"><div><h1 id="hLib">Library</h1><p class="muted">Everything you've saved, plus anything you import. Originals are kept unchanged. You can correct how a record is organized without touching its file.</p></div><button class="btn primary" data-import type="button">＋ Import Documents</button></div>
+      <div class="stats" id="stats"></div>
+      <p class="muted" id="storageLine" style="margin:-6px 0 14px;font-size:15px"></p>
+      <div class="panel backup-nudge hidden" id="backupNudge"><div><b>🛡 Keep a backup.</b> Your library lives only on this device. An encrypted backup protects it if the phone is lost or the browser is cleared.</div><button class="btn" id="quickBackup" type="button">Back up now</button></div>
+      <div id="drop" class="drop" tabindex="0" role="button" aria-label="Import your documentation: choose files or drop them here">
+        <b>Import Your Documentation</b>
+        <span>Choose files or drop them here — PDFs from Inky or other devices, photos, screenshots, receipts, audio, video, or ZIP files.</span>
+        <span class="fine">Nothing is uploaded. Files are encrypted and stored on this device.</span>
+      </div>
+      <div id="review" class="panel review hidden" aria-labelledby="hReview">
+        <div class="panel-head"><div><h2 id="hReview">Check before saving</h2><p class="muted" id="reviewSub"></p></div><button id="reviewCancel" class="btn small" type="button">Cancel import</button></div>
+        <div id="reviewList"></div>
+        <div class="review-foot"><span id="reviewCount" class="muted"></span><button id="reviewSave" class="btn primary" type="button">Save to library</button></div>
+      </div>
+      <div class="panel">
+        <div class="filters">
+          <label class="search"><span class="sr">Search</span><input id="fSearch" type="search" placeholder="Search ID, title, case, report number, names…"></label>
+          <label><span class="sr">Category</span><select id="fCat"></select></label>
+          <label><span class="sr">Case</span><select id="fCase"></select></label>
+          <label><span class="sr">Month</span><select id="fMonth"></select></label>
+          <label><span class="sr">Status</span><select id="fStatus"><option value="">Any status</option><option value="needs-review">Needs review</option><option value="confirmed">Reviewed</option><option value="nodate">Missing a date</option><option value="older">Earlier versions</option><option value="file">Evidence files</option><option value="missingref">Has missing references</option></select></label>
+        </div>
+        <div class="seg" role="tablist" aria-label="Library view">
+          <button role="tab" data-lv="list" aria-selected="true">Cards</button><button role="tab" data-lv="folders" aria-selected="false">Folders</button><button role="tab" data-lv="index" aria-selected="false">Master index</button><button role="tab" data-lv="evidence" aria-selected="false">Evidence</button>
+        </div>
+        <p id="libCount" class="muted" aria-live="polite"></p>
+        <div id="libBody"></div>
+      </div>
+    </section>
+
+    <section id="v-timeline" class="view hidden" aria-labelledby="hTl">
+      <div class="head"><div><h1 id="hTl">Ridion</h1><p class="muted">Case timeline and binder indexes</p></div><div class="actions"><button class="btn" data-binder-tab="index">Master index</button><button class="btn" data-binder-tab="evidence">Evidence index</button></div><button id="printCal" class="btn" type="button">Print calendar</button></div>
+      <div class="panel">
+        <div class="filters">
+          <label><span class="sr">Case</span><select id="tCase"></select></label>
+          <label><span class="sr">Category</span><select id="tCat"></select></label>
+          <label class="inline">From <input id="tFrom" type="date"></label>
+          <label class="inline">Through <input id="tTo" type="date"></label>
+        </div>
+        <div class="calnav"><button id="calPrev" class="btn small" type="button" aria-label="Previous two months">‹ Earlier</button><h2 id="calTitle"></h2><button id="calNext" class="btn small" type="button" aria-label="Next two months">Later ›</button><button id="calToday" class="btn small" type="button">This month</button></div>
+        <div id="cal" class="cal"></div>
+        <div id="legend" class="legend"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>Chronological record</h2><button id="clearDay" class="btn small hidden" type="button">Show all dates</button></div>
+        <div id="tlList"></div>
+      </div>
+    </section>
+
+    <section id="v-packet" class="view hidden" aria-labelledby="hPk">
+      <div class="head"><div><h1 id="hPk">Build a packet</h1><p class="muted">Choose the case and dates to include.</p></div></div>
+      <details class="more panel-like" id="pkCustom" open>
+        <summary>Packet settings <span class="muted" id="pkCustomHint"></span></summary>
+        <div>
+          <div class="grid2">
+            <label>Report title<input id="pkTitle" value="Documentation Report" maxlength="120"></label>
+            <label>Dates<select id="pkRange"><option value="all">All dates</option><option value="m1">This month</option><option value="m2" selected>This month and last month</option><option value="custom">Custom range</option></select></label>
+            <label id="pkFromW" class="hidden">From<input id="pkFrom" type="date"></label>
+            <label id="pkToW" class="hidden">Through<input id="pkTo" type="date"></label>
+          </div>
+          <fieldset><legend>Cases</legend><div id="pkCases" class="checks"></div></fieldset>
+          <details class="more"><summary>Sections, privacy, and other filters</summary><fieldset><legend>Categories</legend><div id="pkCats" class="checks"></div></fieldset>
+          <details class="more"><summary>Pick individual records <span id="pkPickCount" class="muted"></span></summary><div id="pkRecords" class="pickrows"></div></details>
+          <fieldset><legend>Sections (use the arrows to reorder)</legend><ul id="pkSections" class="seclist"></ul></fieldset>
+          <fieldset><legend>Privacy</legend>
+            <label class="check"><input type="checkbox" id="pkNarr" checked> Include full written accounts</label>
+            <label class="check"><input type="checkbox" id="pkFollow" checked> Include follow-up notes</label>
+            <label class="check"><input type="checkbox" id="pkKids"> Replace children's names with "[child]"</label>
+            <label class="check"><input type="checkbox" id="pkReview"> Include records that still need review</label>
+          </fieldset>
+          <fieldset><legend>Copy style</legend>
+            <label class="check"><input type="radio" name="pkProfile" value="clean" checked> Clean court-review copy</label>
+            <label class="check"><input type="radio" name="pkProfile" value="mark"> Presentation copy with a faint watermark</label>
+            <label id="pkOpW" class="inline hidden">Watermark strength <input id="pkOpacity" type="range" min="10" max="100" value="45"></label>
+          </fieldset>
+          </details>
+        </div>
+      </details>
+      <div class="report-hero panel">
+        <div class="rh-top"><div class="rh-icon" aria-hidden="true">▧</div><div><h2>Full report</h2><p id="pkSummary" class="muted"></p></div></div>
+        <ul class="rh-list" id="pkIncludes"></ul>
+        <div class="actions big-actions"><button id="pkRun" class="btn bronze big" type="button">Build packet</button></div>
+      </div>
+      <div class="panel result hidden" id="pkResult" aria-live="polite">
+        <div class="result-head"><div><h2>Your report is ready</h2><p id="pkResultSum" class="muted"></p></div></div>
+        <div class="actions big-actions">
+          <button id="pkPdf" class="btn primary big" type="button">⬇ Download PDF</button>
+          <button id="pkPrint" class="btn big" type="button">🖨 Print</button>
+        </div>
+        <div class="actions"><button id="pkZip" class="btn small" type="button">Report + original files (ZIP)</button></div>
+        <label class="check"><input type="checkbox" id="pkOriginals" checked> Put the untouched original files in the ZIP</label>
+        <p id="pkOrigWarn" class="banner warn hidden"></p>
+        <div class="paperwrap" id="pkOut"></div>
+      </div>
+
+      
+      <details class="more panel-like"><summary>📦 Other exports</summary>
+        <div class="actions">
+          <button class="btn small" data-quick="evidence" type="button">Evidence list (PDF)</button>
+          <button class="btn small" data-quick="chronology" type="button">Timeline only (PDF)</button>
+          <button class="btn small" data-quick="financial" type="button">Money summary (PDF)</button>
+          <button class="btn small" id="pkCatZip" type="button">One PDF per category (ZIP)</button>
+          <button class="btn small" id="pkIndexCsv" type="button">Spreadsheet of all records (CSV)</button>
+        </div>
+      </details>
+      <p class="banner info">Reports and ZIP files are <b>not encrypted</b> — check what's included before sharing. A report is an organizational summary, not a court-issued or certified document.</p>
+    </section>
+
+    <section id="v-settings" class="view hidden" aria-labelledby="hSet">
+      <div class="head"><div><h1 id="hSet">Settings</h1><p class="muted">Vault, backups, verification, and help.</p></div></div>
+      <div class="setgrid">
+        <div class="panel"><h2>Encrypted backup</h2><p>Downloads everything — records and original files — still encrypted with your passphrase. Keep at least two copies in different places. A forgotten passphrase can't be recovered.</p><p id="backupLine" class="muted"></p><div class="actions"><button id="backupBtn" class="btn primary" type="button">Download encrypted backup</button><button id="testBackupBtn" class="btn" type="button">Test a backup</button></div></div>
+        <div class="panel"><h2>Record numbers</h2><p>Each record type counts on its own (INCD001, POLI002…). Numbers continue automatically from everything in your library and never go backwards.</p><div class="actions"><button id="numView" class="btn" type="button">View or raise numbers</button><button id="numExport" class="btn small" type="button">Export number backup</button><button id="numImport" class="btn small" type="button">Import numbers from Inky</button></div><input type="file" id="importFile" accept=".json,application/json" hidden></div>
+        <div class="panel"><h2>Restore or merge</h2><p>Add records from a backup. Nothing already in this library is overwritten.</p><button id="restoreBtn" class="btn" type="button">Restore from backup</button></div>
+        <div class="panel"><h2>Verify a report ZIP</h2><p>Checks every file in an exported report ZIP against the fingerprints in its manifest. This shows whether files changed — not who made them or whether they're true.</p><button id="verifyBtn" class="btn" type="button">Verify a ZIP</button></div>
+        <div class="panel"><h2>Storage</h2><p id="storageInfo">Checking…</p><p class="muted">Browser storage can be cleared by the browser, by clearing site data, or if the device fails. Backups are your safety net.</p><button id="persistBtn" class="btn small" type="button">Ask the browser to keep storage</button></div>
+        <div class="panel"><h2>Auto-lock</h2><label>Lock after inactivity<select id="idleSel"><option value="5">5 minutes</option><option value="10">10 minutes</option><option value="15">15 minutes</option><option value="30">30 minutes</option></select></label><div class="actions"><button id="lockBtn2" class="btn" type="button">Lock now</button></div></div>
+        <div class="panel"><h2>Import history</h2><div id="importHist" class="muted"></div></div>
+        <div class="panel"><h2>Help</h2><p>How to import, review, build packets, and back up.</p><div class="actions"><button id="helpBtn" class="btn" type="button">Open user guide</button><button id="installBtn" class="btn" type="button">How to install</button></div></div>
+        <div class="panel danger"><h2>Delete this library</h2><p>Erases the encrypted library from this browser. Make and test a backup first.</p><button id="wipeBtn" class="btn danger" type="button">Delete library from this device</button></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<input type="file" id="importInput" multiple hidden>
+<input type="file" id="backupInput" accept=".zip,application/zip" hidden>
+<input type="file" id="verifyInput" accept=".zip,application/zip" hidden>
+
+<dialog id="dlgRec" class="wide" aria-labelledby="recTitle"><div class="dh"><h2 id="recTitle">Record</h2><button class="btn small" data-close type="button">Close</button></div><div class="db" id="recBody"></div></dialog>
+<dialog id="dlgMsg" aria-labelledby="msgTitle"><div class="dh"><h2 id="msgTitle"></h2></div><div class="db" id="msgBody"></div><div class="df" id="msgFoot"></div></dialog>
+<dialog id="dlgPass" aria-labelledby="ppTitle"><form method="dialog" id="ppForm"><div class="dh"><h2 id="ppTitle">Backup passphrase</h2></div><div class="db"><p id="ppText"></p><label for="ppInput">Passphrase</label><input id="ppInput" type="password" autocomplete="off"></div><div class="df"><button class="btn" value="cancel" type="submit" formnovalidate>Cancel</button><button class="btn primary" value="ok" type="submit">Continue</button></div></form></dialog>
+
+<dialog id="rDlgPreview" class="wide rx" aria-labelledby="rPvTitle">
+  <div class="dh"><h2 id="rPvTitle">Record preview</h2><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn small" type="button" id="pvEdit">← Back to form</button><button class="btn small primary" type="button" id="pvDownload">Save record</button></div></div>
+  <div class="db"><div id="pvPaper"></div></div>
+</dialog>
+<dialog id="dlgClear" class="rx" aria-labelledby="clTitle">
+  <div class="dh"><h2 id="clTitle">Start a new record?</h2></div>
+  <div class="db"><ul><li>The form and selected files will be cleared.</li><li>Records you already saved stay in your library.</li><li>Numbering continues as normal.</li></ul><p id="clWarn" class="hint"></p>
+  <label style="display:flex;gap:10px;align-items:flex-start;font-size:17px;margin-top:8px"><input type="checkbox" id="keepNames" checked style="width:24px;height:24px;flex:none;margin-top:2px"> Keep my name and the children's names for the next record</label></div>
+  <div class="df"><button class="btn" type="button" id="clCancel">Cancel</button><button class="btn primary" type="button" id="clOk">Start new record</button></div>
+</dialog>
+<dialog id="dlgUnicode" class="rx" aria-labelledby="ucTitle">
+  <div class="dh"><h2 id="ucTitle">Some characters can't go in a PDF</h2></div>
+  <div class="db"><p>The built-in PDF maker can't show: <strong id="ucChars"></strong></p><p>Nothing was saved or numbered. Edit those characters out, or use <b>Save &amp; print</b> — the record is still saved to your library and the print copy shows every character.</p></div>
+  <div class="df"><button class="btn" type="button" id="ucBack">Go back and edit</button><button class="btn primary" type="button" id="ucPrint">Save &amp; print instead</button></div>
+</dialog>
+<dialog id="dlgNumbers" class="rx" aria-labelledby="nmTitle">
+  <div class="dh"><h2 id="nmTitle">Next record numbers</h2><button class="btn small" type="button" data-close>Close</button></div>
+  <div class="db"><p class="hint" style="margin-top:0">Each type counts on its own. You can raise a number but never lower it, which prevents duplicate IDs.</p><table class="numtable"><thead><tr><th>Type</th><th>Next</th></tr></thead><tbody id="numRows"></tbody></table></div>
+  <div class="df"><button class="btn primary" type="button" id="nmSave">Save increases</button></div>
+</dialog>
+<dialog id="dlgInfo" class="rx" aria-labelledby="infoTitle">
+  <div class="dh"><h2 id="infoTitle"></h2><button class="btn small" type="button" data-close>Close</button></div>
+  <div class="db" id="infoBody"></div>
+  <div class="df" id="infoFoot"></div>
+</dialog>
+
+<div id="printRoot" aria-hidden="true"></div>
+<div id="busy" class="busy hidden" role="status" aria-live="polite"><div><span class="spin" aria-hidden="true"></span><span id="busyText">Working…</span></div></div>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<script src="lib.js"></script>
+<script src="app.js"></script>
+<script src="record.js"></script>
+</body>
+</html>
