@@ -43,18 +43,19 @@ function askText(title, text, { password = true, placeholder = '' } = {}) {
 }
 
 /* ================= categories ================= */
-const GROUPS = {
-  police: { label: 'Police Interactions', color: '#b0573d', sym: '◆' }, incident: { label: 'Events and occurrences', color: '#a2455f', sym: '✱' },
-  parenting: { label: 'Parenting', color: '#2f7f73', sym: '●' }, comms: { label: 'Communications', color: '#3a6d9a', sym: '▲' },
-  care: { label: 'Child & Care', color: '#765a8f', sym: '■' }, finance: { label: 'Financial', color: '#a8752c', sym: '$' },
-  court: { label: 'Court & Legal', color: '#3f4a7c', sym: '§' }, evidence: { label: 'Evidence', color: '#5c6875', sym: '◎' },
-  other: { label: 'Not yet categorized', color: '#6b7280', sym: '?' }
-};
-const GROUP_ORDER = ['police', 'incident', 'parenting', 'comms', 'care', 'finance', 'court', 'evidence', 'other'];
+/* Color coding follows the project color guide: one palette color per group (color = text-safe ink, swatch = palette color). */
+const GROUPS = Object.fromEntries(Object.entries({
+  incident: { label: 'Incident reports', sym: '✱' }, concerns: { label: 'Concerns raised', sym: '!' },
+  comms: { label: 'Communications', sym: '▲' }, evidence: { label: 'Evidence', sym: '◎' },
+  police: { label: 'Police reports', sym: '◆' }, parenting: { label: 'Parenting & exchanges', sym: '●' },
+  care: { label: 'Child & Care', sym: '■' }, finance: { label: 'Financial', sym: '$' },
+  court: { label: 'Court & Legal', sym: '§' }, other: { label: 'Not yet categorized', sym: '?' }
+}).map(([k, g]) => { const c = L.catColor(k); return [k, { ...g, color: c.ink, swatch: c.color, colorName: c.name }]; }));
+const GROUP_ORDER = ['incident', 'concerns', 'comms', 'evidence', 'police', 'parenting', 'care', 'finance', 'court', 'other'];
 const CATS = {
-  INCD:['Incident','incident'], EVID:['Evidence','evidence'], COMM:['Communication','comms'], POLI:['Police contact','police'],
-  PPD: ['Police Interaction', 'police'], INC: ['General Incident', 'incident'], PAR: ['Parenting Issue', 'parenting'],
-  KCT: ['Child Contact', 'comms'], EXC: ['Parenting Exchange', 'comms'], MED: ['Medical', 'care'], EDU: ['Education', 'care'], THR: ['Therapy', 'care'],
+  INCD:['Incident report','incident'], CONC:['Concerns raised','concerns'], COMM:['Communication log','comms'], EVID:['Evidence intake','evidence'], POL:['Police report','police'], EXCH:['Parenting exchange','parenting'],
+  POLI:['Police contact (POLI)','police'], PPD: ['Police Interaction', 'police'], INC: ['General Incident', 'incident'], PAR: ['Parenting Issue', 'parenting'],
+  KCT: ['Child Contact', 'comms'], EXC: ['Parenting Exchange (EXC)', 'parenting'], MED: ['Medical', 'care'], EDU: ['Education', 'care'], THR: ['Therapy', 'care'],
   ACT: ['Activities', 'care'], WEL: ['Well-being', 'care'], OBS: ['Child Statements & Observations', 'care'], FIN: ['Financial', 'finance'], RCP: ['Receipt', 'finance'],
   CRT: ['Court / Legal', 'court'], EVD: ['Evidence', 'evidence'],
   COM: ['Communications (older code)', 'comms'], CHD: ['Child & Care (older code)', 'care'], EV: ['Evidence (older code EV)', 'evidence'], EB: ['Evidence (older code EB)', 'evidence'], IN: ['Incident (older code IN)', 'incident'],
@@ -76,9 +77,11 @@ const METHOD = {
 
 /* ================= storage (IndexedDB + Web Crypto) ================= */
 const ITER = 600000, CHECK = 'documentation-vault-check-v1';
-let db = null, key = null, R = [], S = null;
+let db = null, key = null, R = [], S = null, D = [];
 const req = r => new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
-function openDB() { return new Promise((res, rej) => { const r = indexedDB.open('inkyridion-vault', 1); r.onupgradeneeded = () => { const d = r.result; d.createObjectStore('meta'); d.createObjectStore('records', { keyPath: 'id' }); d.createObjectStore('files', { keyPath: 'id' }); }; r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); r.onblocked = () => rej(new Error('Close other tabs of this app and try again.')); }); }
+/* Version 2 adds the drafts store. Upgrades only add stores, so existing records are never touched. */
+const DB_VERSION = 2;
+function openDB() { return new Promise((res, rej) => { const r = indexedDB.open('inkyridion-vault', DB_VERSION); r.onupgradeneeded = e => { const d = r.result; if (e.oldVersion < 1) { d.createObjectStore('meta'); d.createObjectStore('records', { keyPath: 'id' }); d.createObjectStore('files', { keyPath: 'id' }); } if (!d.objectStoreNames.contains('drafts')) d.createObjectStore('drafts', { keyPath: 'id' }); }; r.onsuccess = () => { const d = r.result; d.onversionchange = () => { d.close(); toast('Inkyridion was updated in another tab. Reload this page.'); }; res(d); }; r.onerror = () => rej(r.error); r.onblocked = () => rej(new Error('Close other tabs of this app and try again.')); }); }
 function tx(stores, mode, fn) { return new Promise((res, rej) => { let t; try { t = db.transaction(stores, mode); } catch (e) { rej(e); return; } let out; try { out = fn(t); } catch (e) { try { t.abort(); } catch { } rej(e); return; } t.oncomplete = () => res(out); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error || new Error('Saving was cancelled.')); }); }
 async function idbGetV(store, k) { let v; await tx([store], 'readonly', t => { t.objectStore(store).get(k).onsuccess = e => v = e.target.result; }); return v; }
 async function idbAll(store) { let v; await tx([store], 'readonly', t => { t.objectStore(store).getAll().onsuccess = e => v = e.target.result; }); return v || []; }
@@ -134,14 +137,15 @@ async function onAuth(e) {
       key = k; const srow = await idbGetV('meta', 'settings'); S = srow ? { ...defaultSettings(), ...await unseal(srow) } : defaultSettings();
       const rows = await idbAll('records'); R = []; const bad = [];
       for (const r of rows) { try { R.push(await unseal(r)); } catch { bad.push(r.id); } }
+      await loadDrafts();
       enterApp(); if (bad.length) msg('Some records could not be read', `<p>${bad.length} stored record(s) failed their integrity check and were skipped. Restore from a backup if this continues.</p>`);
     } catch (err) { $('authErr').textContent = 'Could not unlock: ' + err.message; } finally { unbusy(); }
   }
 }
-function enterApp() { $('auth').classList.add('hidden'); $('app').classList.remove('hidden'); $('pass').value = ''; $('pass2').value = ''; lastActive = Date.now(); renderAll(); window.Record?.onUnlock(); go('record'); }
+function enterApp() { $('auth').classList.add('hidden'); $('app').classList.remove('hidden'); $('pass').value = ''; $('pass2').value = ''; lastActive = Date.now(); renderAll(); window.Record?.onUnlock(); go('dashboard'); }
 function lock() {
-  key = null; R = []; S = null; staged = []; pkExcluded.clear();
-  document.querySelectorAll('dialog[open]').forEach(d => d.close()); $('printRoot').innerHTML = ''; ['recent', 'tlPreview', 'libBody', 'tlList', 'cal', 'reviewList', 'pkRecords', 'pvBody', 'recBody'].forEach(id => { const e = $(id); if (e) e.innerHTML = ''; });
+  key = null; R = []; S = null; D = []; staged = []; pkExcluded.clear();
+  document.querySelectorAll('dialog[open]').forEach(d => d.close()); $('printRoot').innerHTML = ''; ['recent', 'tlPreview', 'libBody', 'tlList', 'cal', 'reviewList', 'pkRecords', 'pvBody', 'recBody', 'dStats', 'dDrafts', 'dRecent', 'dReady'].forEach(id => { const e = $(id); if (e) e.innerHTML = ''; });
   $('review').classList.add('hidden'); setMode('unlock');
 }
 let lastActive = Date.now();
@@ -149,14 +153,15 @@ let lastActive = Date.now();
 setInterval(() => { if (key && S && Date.now() - lastActive > (S.idle || 10) * 60000) { lock(); toast('Locked after inactivity.'); } }, 15000);
 
 /* ================= navigation ================= */
-let view = 'record';
+let view = 'dashboard';
 function go(v) {
   view = v; document.querySelectorAll('.view').forEach(s => s.classList.toggle('hidden', s.id !== 'v-' + v));
   document.querySelectorAll('.nav').forEach(b => b.toggleAttribute('aria-current', b.dataset.view === v)); document.querySelectorAll('.nav[aria-current]').forEach(b => b.setAttribute('aria-current', 'page'));
-  ({ record: () => window.Record?.render(), library: () => { renderOverview(); renderLibrary(); }, timeline: renderTimeline, packet: renderPacket, settings: renderSettings })[v]();
+  VIEWS[v]();
   scrollTo(0, 0); $('main').focus({ preventScroll: true });
 }
-function renderAll() { fillFilterOptions(); if (view) ({ record: () => window.Record?.render(), library: () => { renderOverview(); renderLibrary(); }, timeline: renderTimeline, packet: renderPacket, settings: renderSettings })[view] ?.(); }
+const VIEWS = { dashboard: () => renderDashboard(), record: () => window.Record?.render(), library: () => { renderOverview(); renderLibrary(); }, timeline: () => renderTimeline(), packet: () => renderPacket(), settings: () => renderSettings() };
+function renderAll() { fillFilterOptions(); if (view) VIEWS[view]?.(); }
 
 /* ================= derived data ================= */
 const current = () => R.filter(r => r.isCurrent !== false);
@@ -235,7 +240,7 @@ async function analyze(it) {
       const fn = parseFilename(it.name);
       if (fn) { s.method = 'filename'; s.revision = fn.revision; Object.assign(s.f, { docId: fn.docId, category: fn.category, eventDate: fn.eventDate, title: fn.title }); }
       else { let txt = ''; try { txt = await L.scanPdfText(it.u8); } catch { }
-        const id = (txt.match(/Document ID\s+([A-Z]{2,4}\d{3,6})/) || txt.match(/\b((?:INCD|POLI|COMM|EVID|INC|PAR|EVD|PPD|KCT|EXC|FIN|RCP|CRT|MED|EDU|THR|ACT|WEL|OBS|COM|CHD)\d{3,6})\b/) || [])[1];
+        const id = (txt.match(/Document ID\s+([A-Z]{2,4}\d{3,6})/) || txt.match(/\b((?:INCD|CONC|POLI|POL|EXCH|COMM|EVID|INC|PAR|EVD|PPD|KCT|EXC|FIN|RCP|CRT|MED|EDU|THR|ACT|WEL|OBS|COM|CHD)\d{3,6})\b/) || [])[1];
         if (id) { s.method = 'text'; s.f.docId = id; s.f.category = prefixOf(id); } }
       if (!s.f.title) s.f.title = it.name.replace(/\.[^.]+$/, '').replace(/[_]+/g, ' ');
       s.notes.push('Printed or "Save as PDF" copies don\'t carry record data, so please check these details.');
@@ -315,8 +320,9 @@ function buildRecord(s, fileId, now) {
   const m = s.manifest || {}; const f = s.f; const docIdIn = f.docId.trim().toUpperCase();
   const cat = f.category || prefixOf(docIdIn) || (s.kind === 'file' ? 'SRC' : '');
   let internalRef = ''; if (!docIdIn) { internalRef = 'SRC-' + pad(S.srcNext++, 4); }
+  const newUid = uid();
   const rec = {
-    uid: uid(), kind: s.kind, docId: docIdIn || internalRef, originalId: docIdIn, internalRef, category: cat, title: f.title.trim() || s.name,
+    uid: newUid, recordUuid: newUid, createdAt: now, modifiedAt: now, readyForReport: false, kind: s.kind, docId: docIdIn || internalRef, originalId: docIdIn, internalRef, category: cat, title: f.title.trim() || s.name,
     eventDate: f.eventDate, eventTime: s.kind === 'record' ? f.eventTime : '', timeAccuracy: f.eventTime ? (m.eventTime === f.eventTime && m.timeAccuracy ? m.timeAccuracy : 'Exact') : 'Unknown',
     timeZone: m.timeZone || '', entryStarted: m.entryStarted || '', generatedAt: m.generatedAt || '', revision: s.revision || 1, heading: m.heading || '', subcategory: m.subcategory || '',
     preparedBy: m.preparedBy || '', basis: m.basis || '', location: m.location || '', people: m.people || [], children: m.children || [],
@@ -331,13 +337,21 @@ function buildRecord(s, fileId, now) {
   if (s.matchedTo) rec.links.push({ to: s.matchedTo, type: 'Supporting evidence' });
   return rec;
 }
+/* Save & Send storage step. One IndexedDB transaction writes the record, its attachments, the number counters,
+   and removes the draft it came from; nothing is reported as saved until that transaction completes. */
 async function saveCreated(o) {
+  if (!key || !S) throw new Error('The library is locked. Unlock it and try again — your entry is still on the form.');
+  if (o.submissionId) { const done = R.find(r => r.submissionId === o.submissionId); if (done) return { docId: done.docId, uid: done.uid, already: true }; }
   const now = new Date().toISOString(); const m = o.manifest;
   const s = { name: o.name, path: o.name, size: o.bytes.length, u8: o.bytes, type: { kind: o.noPdf ? 'document' : 'pdf', label: o.noPdf ? 'Record data (JSON)' : 'PDF document', mime: o.mime }, sha256: await L.sha256(o.bytes), lastModified: now, method: 'created', manifest: m, schema: 'documentation-record v2', revision: Number(m.revision) || 1, kind: 'record',
     f: { docId: String(m.id || '').toUpperCase(), category: prefixOf(m.id), title: m.title || '', eventDate: m.eventDate || '', eventTime: m.eventTime || '', cases: (m.caseRefs || []).map(c => c.caseNumber).join(', ') }, reviewed: true, notes: o.noPdf ? ['Saved as record data only: some characters can\'t go in a PDF. Use Print for a paper copy.'] : [] };
   const fileRows = []; const fid = uid(); fileRows.push({ id: fid, ...await sealBytes(o.bytes) });
-  const rec = buildRecord(s, fid, now); rec.status = 'confirmed'; rec.history[0] = { at: now, field: 'Created', from: '', to: `Saved in this app (revision ${rec.revision})` };
-  const demoted = R.filter(r => r.docId === rec.docId && r.isCurrent !== false && r.kind === 'record').map(r => ({ ...r, isCurrent: false, history: [...r.history, { at: now, field: 'Current version', from: 'Yes', to: `No — revision ${rec.revision} was saved` }] }));
+  const rec = buildRecord(s, fid, now); rec.status = 'confirmed'; rec.history[0] = { at: now, field: 'Created', from: '', to: `Saved with Save & Send (revision ${rec.revision})` };
+  const prev = R.find(r => r.docId === rec.docId && r.isCurrent !== false && r.kind === 'record');
+  if (R.some(r => r.docId === rec.docId && r.kind === 'record' && Number(r.revision) === rec.revision && r.method === 'created')) throw new Error(`${rec.docId} revision ${rec.revision} is already stored. Reopen the record to correct it.`);
+  rec.typeKey = o.typeKey || ''; rec.titleAutomatic = !!m.titleAutomatic; rec.submissionId = o.submissionId || '';
+  if (prev) { rec.recordUuid = prev.recordUuid || prev.uid; rec.createdAt = prev.createdAt || prev.source?.importedAt || now; rec.readyForReport = !!prev.readyForReport; rec.links = [...(prev.links || [])]; rec.refStatus = { ...(prev.refStatus || {}) }; rec.history.push({ at: now, field: 'Correction', from: `Revision ${prev.revision || 1}`, to: `Revision ${rec.revision}`, note: 'Earlier version kept unchanged in the library' }); }
+  const demoted = R.filter(r => r.docId === rec.docId && r.isCurrent !== false && r.kind === 'record').map(r => ({ ...r, isCurrent: false, modifiedAt: now, history: [...r.history, { at: now, field: 'Current version', from: 'Yes', to: `No — revision ${rec.revision} was saved` }] }));
   const newRecs = [rec];
   for (const f of o.files || []) {
     if (!f.file) continue; const u8 = new Uint8Array(await f.file.arrayBuffer()); const sha = f.hash || await L.sha256(u8);
@@ -347,13 +361,53 @@ async function saveCreated(o) {
       f: { docId: String(f.ref || '').toUpperCase(), category: /^RCP/.test(f.ref || '') ? 'RCP' : 'EVID', title: f.name, eventDate: m.eventDate || '', eventTime: '', cases: s.f.cases }, reviewed: true, notes: [], matchedTo: rec.docId };
     const fr = buildRecord(fs, fid2, now); fr.history[0] = { at: now, field: 'Attached', from: '', to: `Added with ${rec.docId}` }; newRecs.push(fr);
   }
-  const rows = await Promise.all([...newRecs, ...demoted].map(async r => ({ id: r.uid, ...await seal(r) }))); const srow = await seal(S);
-  try { await tx(['records', 'files', 'meta'], 'readwrite', t => { const fst = t.objectStore('files'), rs = t.objectStore('records'); fileRows.forEach(x => fst.put(x)); rows.forEach(x => rs.put(x)); t.objectStore('meta').put(srow, 'settings'); }); }
-  catch (e) { const quota = e && (e.name === 'QuotaExceededError' || /quota/i.test(e.message || '')); throw new Error(quota ? 'The browser ran out of storage space, so nothing was saved.' : 'Saving failed: ' + (e.message || e)); }
+  const counters = { ...(S.counters || {}) }; for (const [k, v] of Object.entries(o.counters || {})) counters[k] = Math.max(Number(counters[k]) || 1, Number(v) || 1);
+  const S2 = { ...S, counters };
+  const rows = await Promise.all([...newRecs, ...demoted].map(async r => ({ id: r.uid, ...await seal(r) }))); const srow = await seal(S2);
+  try { await tx(['records', 'files', 'meta', 'drafts'], 'readwrite', t => { const fst = t.objectStore('files'), rs = t.objectStore('records'); fileRows.forEach(x => fst.put(x)); rows.forEach(x => rs.put(x)); t.objectStore('meta').put(srow, 'settings'); if (o.draftId) { t.objectStore('drafts').delete(o.draftId); } }); }
+  catch (e) { const quota = e && (e.name === 'QuotaExceededError' || /quota/i.test(e.message || '')); throw new Error(quota ? 'The browser ran out of storage space, so nothing was saved. Free up space or back up and remove large files, then try again.' : 'Saving failed: ' + (e.message || e)); }
+  S = S2;
   for (const d of demoted) { const i = R.findIndex(r => r.uid === d.uid); if (i >= 0) R[i] = d; }
-  R.push(...newRecs); fillFilterOptions();
-  return rec.docId;
+  R.push(...newRecs); if (o.draftId) D = D.filter(d => d.id !== o.draftId);
+  renderAll();
+  return { docId: rec.docId, uid: rec.uid };
 }
+
+/* ================= drafts (encrypted, outside the Records Library) ================= */
+async function loadDrafts() { D = []; let rows = []; try { rows = await idbAll('drafts'); } catch { rows = []; } for (const r of rows) { try { D.push({ id: r.id, ...await unseal(r.meta) }); } catch { /* unreadable draft skipped */ } } D.sort((a, b) => (b.savedAt || '').localeCompare(a.savedAt || '')); }
+async function saveDraft(d) {
+  if (!key) throw new Error('The library is locked.');
+  const now = new Date().toISOString(); const files = [];
+  for (const f of d.files || []) { let b64 = null; if (f.file) b64 = L.toB64(new Uint8Array(await f.file.arrayBuffer())); files.push({ name: f.name, size: f.size, type: f.type, lastModified: f.lastModified, hash: f.hash, ref: f.ref, stored: f.stored, b64 }); }
+  const prior = D.find(x => x.id === d.id);
+  const meta = { title: d.title, typeKey: d.typeKey, formLabel: d.formLabel, prefix: d.prefix, docId: d.docId || '', eventDate: d.eventDate || '', fileCount: files.length, createdAt: prior?.createdAt || now, savedAt: now };
+  const row = { id: d.id, meta: await seal(meta), body: await seal({ typeKey: d.typeKey, state: d.state, files }) };
+  try { await tx(['drafts'], 'readwrite', t => t.objectStore('drafts').put(row)); }
+  catch (e) { const quota = e && (e.name === 'QuotaExceededError' || /quota/i.test(e.message || '')); throw new Error(quota ? 'The browser ran out of storage space.' : (e.message || String(e))); }
+  D = [{ id: d.id, ...meta }, ...D.filter(x => x.id !== d.id)];
+}
+async function openDraft(id) {
+  const row = await idbGetV('drafts', id); if (!row) { toast('That draft is no longer here.'); await loadDrafts(); renderDashboard(); return; }
+  const body = await unseal(row.body); body.id = id; body.files = (body.files || []).map(f => ({ ...f, bytes: f.b64 ? L.fromB64(f.b64) : null }));
+  go('record'); await window.Record?.loadDraft(body);
+}
+async function deleteDraft(id) {
+  const d = D.find(x => x.id === id); if (!d) return;
+  const v = await msg('Delete this draft?', `<p><b>${esc(d.title || 'Untitled draft')}</b> (${esc(d.formLabel || '')}) will be deleted from this device. Stored records are not affected.</p>`, [{ label: 'Cancel', value: 'no' }, { label: 'Delete draft', value: 'yes', danger: true }]);
+  if (v !== 'yes') return; await tx(['drafts'], 'readwrite', t => t.objectStore('drafts').delete(id)); D = D.filter(x => x.id !== id); renderDashboard(); toast('Draft deleted.');
+}
+
+/* ================= record status ================= */
+/* Stored = in the Records Library. Ready for Report = the user's independent selection.
+   Included in Report = listed in the log of a generated report (derived; the record itself is never altered). */
+const reportsWith = r => (S?.packets || []).filter(p => p.kind !== 'pdf-declined' && (p.recs || []).some(x => x.uid === r.uid)).map(p => p.id);
+function statusBadges(r) {
+  if (r.kind !== 'record' && r.kind !== 'file') return '';
+  const inc = [...new Set(reportsWith(r))];
+  return '<span class="badge b-stored">Stored</span>' + (r.readyForReport ? '<span class="badge b-ready">Ready for Report</span>' : '') + (inc.length ? `<span class="badge b-incl" title="${esc(inc.join(', '))}">Included in Report${inc.length === 1 ? ' ' + esc(inc[0]) : ` (${inc.length})`}</span>` : '');
+}
+const statusText = r => ['Stored', r.readyForReport ? 'Ready for Report' : '', reportsWith(r).length ? 'Included in ' + [...new Set(reportsWith(r))].join(', ') : ''].filter(Boolean).join(' · ');
+
 async function commitImport() {
   const todo = staged.filter(s => !s.error && s.action !== 'skip'); if (!todo.length) { toast('Nothing to save.'); return; }
   for (const s of todo) if (s.f.eventDate && !parseD(s.f.eventDate)) { msg('Check a date', `<p>${esc(s.name)} has a date that isn't valid.</p>`); return; }
@@ -364,13 +418,13 @@ async function commitImport() {
       busy(`Encrypting ${s.name}…`);
       const fileId = uid(); fileRows.push({ id: fileId, ...await sealBytes(s.u8) });
       const rec = buildRecord(s, fileId, now);
-      if (s.action === 'current') { R.filter(r => r.docId === rec.docId && r.isCurrent !== false).forEach(r => demote.set(r.uid, r)); newRecs.filter(r => r.docId === rec.docId).forEach(r => r.isCurrent = false); }
+      if (s.action === 'current') { R.filter(r => r.docId === rec.docId && r.isCurrent !== false).forEach(r => { demote.set(r.uid, r); rec.links = [...rec.links, ...(r.links || []).filter(l => !rec.links.some(x => x.to === l.to))]; rec.readyForReport = rec.readyForReport || !!r.readyForReport; rec.recordUuid = r.recordUuid || r.uid; rec.createdAt = r.createdAt || r.source?.importedAt || rec.createdAt; }); newRecs.filter(r => r.docId === rec.docId).forEach(r => r.isCurrent = false); }
       if (s.action === 'older') rec.isCurrent = false;
       if (s.action === 'review') { rec.status = 'needs-review'; rec.flags.push(s.dup?.type === 'conflict' ? 'ID conflict: another record already uses this ID with a different title and date.' : 'Decide which version is current.'); if (R.some(r => r.docId === rec.docId && r.isCurrent !== false) || newRecs.some(r => r.docId === rec.docId && r.isCurrent)) rec.isCurrent = false; }
       if (s.action === 'copy') { rec.isCurrent = false; rec.copyOf = s.dup?.other || ''; rec.flags.push(`Exact copy of ${s.dup?.other} (same fingerprint), kept on purpose.`); }
       newRecs.push(rec);
     }
-    const demoted = [...demote.values()].map(r => ({ ...r, isCurrent: false, history: [...r.history, { at: now, field: 'Current version', from: 'Yes', to: 'No — a newer version was imported' }] }));
+    const demoted = [...demote.values()].map(r => ({ ...r, isCurrent: false, modifiedAt: now, history: [...r.history, { at: now, field: 'Current version', from: 'Yes', to: 'No — a newer version was imported' }] }));
     S.imports = [...(S.imports || []), { at: now, count: newRecs.length }].slice(-200);
     const rows = await Promise.all([...newRecs, ...demoted].map(async r => ({ id: r.uid, ...await seal(r) }))); const srow = await seal(S);
     await tx(['records', 'files', 'meta'], 'readwrite', t => { const fs = t.objectStore('files'), rs = t.objectStore('records'); fileRows.forEach(x => fs.put(x)); rows.forEach(x => rs.put(x)); t.objectStore('meta').put(srow, 'settings'); });
@@ -389,7 +443,7 @@ async function commitImport() {
 function recCard(r, extra = '') {
   const g = GROUPS[groupOf(r)]; const ri = r.kind === 'record' ? refInfo(r) : { related: [], missing: 0 };
   const badges = [r.status === 'needs-review' ? '<span class="badge b-review">Needs review</span>' : '', r.isCurrent === false ? '<span class="badge b-old">Earlier version / copy</span>' : '', ri.missing ? `<span class="badge b-miss">${ri.missing} missing reference${ri.missing > 1 ? 's' : ''}</span>` : ''].join('');
-  return `<button type="button" class="rc" data-open="${r.uid}" style="--c:${g.color}"><span class="bar"></span><span><span class="id"><span class="sym" aria-hidden="true">${g.sym}</span>${esc(r.docId)}</span> <span class="badge b-cat" style="--c:${g.color}">${esc(catLabel(r.category))}</span>${badges}
+  return `<button type="button" class="rc" data-open="${r.uid}" style="--c:${g.color}"><span class="bar"></span><span><span class="id"><span class="sym" aria-hidden="true">${g.sym}</span>${esc(r.docId)}</span> <span class="badge b-cat" style="--c:${g.color}">${esc(catLabel(r.category))}</span>${r.kind === 'record' ? statusBadges(r) : ''}${badges}
     <span class="t" style="display:block">${esc(r.title)}</span><span class="m" style="display:block">${esc(r.source.name)}${r.caseRefs.length ? ' · Case ' + esc(r.caseRefs.map(c => c.caseNumber).join(', ')) : ''}${ri.related.length ? ` · ${ri.related.length} related` : ''}${extra}</span></span>
     <span class="d">${r.eventDate ? esc(fmtDate(r.eventDate)) : '<span class="badge b-review">No date</span>'}</span></button>`;
 }
@@ -407,6 +461,46 @@ async function renderOverview() {
 }
 const renderHome = renderOverview;
 async function storageText() { try { const e = await navigator.storage.estimate(); const p = await navigator.storage.persisted?.(); return `Using ${fmtSize(e.usage)} of about ${fmtSize(e.quota)} on this device · ${p ? 'Storage protection on' : 'Storage protection not granted — keep backups'}`; } catch { return 'Storage details unavailable in this browser.'; } }
+async function storageWarning() {
+  try { const e = await navigator.storage.estimate(); const free = (e.quota || 0) - (e.usage || 0);
+    if (e.quota && (free < 50e6 || e.usage / e.quota > .9)) return `Storage for this app is nearly full (about ${fmtSize(free)} left on this device). Download a backup and free up space soon.`; } catch { /* estimate unavailable */ }
+  const lb = S?.lastBackup; const n = current().filter(r => r.kind === 'record').length;
+  if (n >= 3 && (!lb || Date.now() - new Date(lb.at).getTime() > 14 * 864e5)) return 'Reminder: browser storage is not a permanent backup. Download an encrypted backup in Settings.';
+  return '';
+}
+
+/* ================= dashboard ================= */
+const famOf = p => ({ POLI: 'POL', EXC: 'EXCH', PPD: 'POL' }[p] || p);
+const wordSet = t => new Set(String(t || '').toLowerCase().match(/[a-z0-9']{3,}/g) || []);
+function similarity(a, b) { if (!a.size || !b.size) return 0; let n = 0; for (const w of a) if (b.has(w)) n++; return n / (a.size + b.size - n); }
+/* Warn (never delete) when a new entry looks like one already stored. */
+function possibleDuplicates(o) {
+  const out = []; const A = wordSet(o.narrative);
+  for (const r of current()) {
+    if (r.kind !== 'record' || !o.eventDate || r.eventDate !== o.eventDate) continue;
+    if (famOf(String(r.docId).replace(/\d+$/, '')) !== famOf(o.prefix)) continue;
+    const B = wordSet((r.narrative || [])[0]?.value);
+    const close = A.size >= 3 && B.size >= 3 ? similarity(A, B) >= .6 : (r.title || '').toLowerCase() === (o.title || '').toLowerCase() && (r.eventTime || '') === (o.eventTime || '');
+    if (close) out.push(`${r.docId} “${r.title}” (${fmtDate(r.eventDate)}) has the same date and a very similar description.`);
+  }
+  for (const f of o.files || []) { const hit = R.find(x => x.source?.sha256 === f.hash); if (hit) out.push(`The file “${f.name}” is identical to ${hit.docId}, which is already stored. It will be linked to that copy instead of being stored twice.`); }
+  return out.slice(0, 8);
+}
+function renderDashboard() {
+  if (!S) return;
+  const cur = current(); const recs = cur.filter(r => r.kind === 'record'); const ready = recs.filter(r => r.readyForReport); const incl = recs.filter(r => reportsWith(r).length); const inv = evidenceInventory(cur); const lb = S.lastBackup;
+  const stat = (n, l, c, sub = '') => `<div class="stat" style="--c:${c}"><b>${n}</b><span>${l}${sub ? '<br>' + sub : ''}</span></div>`;
+  $('dStats').innerHTML = stat(recs.length, 'Stored records', GROUPS.police.swatch, 'In the Records Library') + stat(D.length, 'Drafts', GROUPS.concerns.swatch, 'Not yet in the library') + stat(ready.length, 'Ready for Report', GROUPS.parenting.swatch) +
+    stat(incl.length, 'Included in reports', GROUPS.court.swatch) + stat(inv.length, 'Evidence items', GROUPS.evidence.swatch) + stat(lb ? esc(fmtDate(lb.at.slice(0, 10))) : 'Never', 'Last backup', GROUPS.incident.swatch, lb ? (lb.verified ? 'Tested ✓' : 'Not tested yet') : 'Back up soon');
+  const forms = window.Record?.formTypes() || [];
+  $('dForms').innerHTML = forms.map(f => `<button type="button" class="formbtn" data-new="${esc(f.key)}" style="--c:${f.color.color};--t:${f.color.ink}"><span class="pfx">${esc(f.prefix)}</span><b>${esc(f.label)}</b><span class="d">${esc(f.desc)}</span></button>`).join('');
+  $('dDrafts').innerHTML = D.length ? `<div class="draftlist">${D.map(d => `<div class="draftrow"><div><b>${esc(d.title || 'Untitled draft')}</b><div class="muted" style="font-size:14.5px">${esc(d.formLabel || '')}${d.docId ? ` · correction of ${esc(d.docId)}` : ''}${d.eventDate ? ' · ' + esc(fmtDate(d.eventDate)) : ''}${d.fileCount ? ` · ${d.fileCount} file${d.fileCount > 1 ? 's' : ''}` : ''} · saved ${esc(stamp(d.savedAt))}</div></div><div class="row"><button class="btn small primary" type="button" data-draft-open="${esc(d.id)}">Open</button><button class="btn small" type="button" data-draft-del="${esc(d.id)}">Delete</button></div></div>`).join('')}</div>` : '<div class="empty">No drafts. Use <b>Save draft</b> on a form to keep an unfinished entry without adding it to the Records Library.</div>';
+  const recent = [...recs].sort((a, b) => (b.createdAt || b.source.importedAt || '').localeCompare(a.createdAt || a.source.importedAt || '') || (b.modifiedAt || '').localeCompare(a.modifiedAt || '')).slice(0, 6);
+  $('dRecent').innerHTML = recent.length ? `<div class="rlist">${recent.map(r => recCard(r)).join('')}</div>` : '<div class="empty">Nothing stored yet. Choose a form above, fill it in, and tap <b>Save &amp; Send</b>.</div>';
+  $('dReady').innerHTML = `<b>${ready.length}</b> record${ready.length === 1 ? '' : 's'} marked Ready for Report${incl.length ? ` · ${incl.length} already included in a report` : ''}. Generating a report never changes or deletes the records it uses.`;
+  $('dLegend').innerHTML = GROUP_ORDER.filter(g => g !== 'other').map(g => `<div class="swatch"><i style="background:${GROUPS[g].swatch}"></i><b>${esc(GROUPS[g].label)}</b><span>${esc(GROUPS[g].colorName)}</span></div>`).join('');
+  storageWarning().then(w => { const el = $('dWarn'); el.textContent = w; el.classList.toggle('hidden', !w); });
+}
 
 /* ================= library ================= */
 let libView = 'list', idxSort = { k: 'date', dir: 1 };
@@ -425,6 +519,7 @@ function libFiltered() {
     if (st !== 'older' && r.isCurrent === false && !q) return false;
     if (st === 'older' && r.isCurrent !== false) return false;
     if (st === 'needs-review' && r.status !== 'needs-review') return false; if (st === 'confirmed' && r.status !== 'confirmed') return false;
+    if (st === 'ready' && !r.readyForReport) return false; if (st === 'included' && !reportsWith(r).length) return false;
     if (st === 'nodate' && r.eventDate) return false; if (st === 'file' && r.kind !== 'file') return false; if (st === 'missingref' && !(r.kind === 'record' && refInfo(r).missing)) return false;
     if (!matchCat(r, cat) || !matchCase(r, cs)) return false;
     if (mo.startsWith('y:') && !(r.eventDate || '').startsWith(mo.slice(2))) return false; if (mo.startsWith('m:') && !(r.eventDate || '').startsWith(mo.slice(2))) return false;
@@ -446,19 +541,34 @@ function renderLibrary() {
     const keyf = { date: sortKey, cat: r => groupOf(r) + r.category + sortKey(r), code: r => r.docId, case: r => (r.caseRefs[0]?.caseNumber || '~') + sortKey(r), imported: r => r.source.importedAt }[idxSort.k];
     const rows = [...list].sort((a, b) => keyf(a).localeCompare(keyf(b)) * idxSort.dir);
     const th = (k, l) => `<th><button type="button" data-sort="${k}">${l}${idxSort.k === k ? (idxSort.dir > 0 ? ' ▲' : ' ▼') : ''}</button></th>`;
-    body.innerHTML = `<div class="row" style="justify-content:flex-end;margin-bottom:8px"><button class="btn small" type="button" id="idxCsv">Download index (CSV)</button></div><div class="tablewrap"><table class="t"><thead><tr>${th('code', 'Record ID')}${th('date', 'Date')}<th>Time</th><th>Title</th>${th('cat', 'Category')}${th('case', 'Case')}<th>Evidence</th><th>Status</th>${th('imported', 'Imported')}</tr></thead><tbody>${rows.map(r => `<tr class="click" data-open="${r.uid}" tabindex="0"><td style="color:${colorOf(r)};font-weight:800">${esc(r.docId)}</td><td>${esc(fmtDate(r.eventDate)) || '—'}</td><td>${r.eventTime ? esc(fmtTime(r.eventTime)) : 'Unknown'}</td><td>${esc(r.title)}</td><td>${esc(catLabel(r.category))}</td><td>${esc(r.caseRefs.map(c => c.caseNumber).join(', '))}</td><td>${esc((r.manifestFiles || []).map(f => f.ref).filter(Boolean).join(', '))}</td><td>${r.status === 'needs-review' ? 'Needs review' : 'Reviewed'}${r.isCurrent === false ? ' · earlier version' : ''}</td><td>${esc(fmtDate(r.source.importedAt.slice(0, 10)))}</td></tr>`).join('')}</tbody></table></div>`;
+    body.innerHTML = `<div class="row" style="justify-content:flex-end;margin-bottom:8px"><button class="btn small" type="button" id="idxCsv">Download index (CSV)</button></div><div class="tablewrap"><table class="t"><thead><tr>${th('code', 'Record ID')}${th('date', 'Date')}<th>Time</th><th>Title</th>${th('cat', 'Category')}${th('case', 'Case')}<th>Evidence</th><th>Status</th>${th('imported', 'Imported')}</tr></thead><tbody>${rows.map(r => `<tr class="click" data-open="${r.uid}" tabindex="0"><td style="color:${colorOf(r)};font-weight:800">${esc(r.docId)}</td><td>${esc(fmtDate(r.eventDate)) || '—'}</td><td>${r.eventTime ? esc(fmtTime(r.eventTime)) : 'Unknown'}</td><td>${esc(r.title)}</td><td>${esc(catLabel(r.category))}</td><td>${esc(r.caseRefs.map(c => c.caseNumber).join(', '))}</td><td>${esc((r.manifestFiles || []).map(f => f.ref).filter(Boolean).join(', '))}</td><td>${esc(statusText(r))}${r.status === 'needs-review' ? ' · needs review' : ''}${r.isCurrent === false ? ' · earlier version' : ''}</td><td>${esc(fmtDate(r.source.importedAt.slice(0, 10)))}</td></tr>`).join('')}</tbody></table></div>`;
   } else {
     const inv = evidenceInventory(list.filter(r => r.isCurrent !== false));
     body.innerHTML = inv.length ? `<div class="tablewrap"><table class="t"><thead><tr><th>Code</th><th>Description</th><th>Record</th><th>File status</th><th>SHA-256</th></tr></thead><tbody>${inv.map(x => `<tr class="click" data-open="${x.rec.uid}" tabindex="0"><td style="color:${x.color};font-weight:800">${esc(x.code)}</td><td>${esc(x.desc)}</td><td>${esc(x.parent)}</td><td>${x.missing ? `<span class="badge b-miss">${esc(x.status)}</span>` : esc(x.status)}</td><td><code style="font-size:12px">${esc(x.sha ? x.sha.slice(0, 16) + '…' : '')}</code></td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">No evidence items match.</div>';
   }
 }
-function indexCsv(recs) { return csv([['Record ID', 'Original ID', 'Internal ref', 'Event date', 'Time', 'Time accuracy', 'Title', 'Category', 'Case numbers', 'Related records', 'Evidence refs', 'Status', 'Current version', 'Revision', 'Imported', 'Original file', 'SHA-256'], ...recs.map(r => [r.docId, r.originalId, r.internalRef, r.eventDate, r.eventTime, r.timeAccuracy, r.title, catLabel(r.category), r.caseRefs.map(c => c.caseNumber).join('; '), r.relatedIds.join('; '), (r.manifestFiles || []).map(f => f.ref).filter(Boolean).join('; '), r.status, r.isCurrent === false ? 'No' : 'Yes', r.revision, r.source.importedAt, r.source.name, r.source.sha256])]); }
+function indexCsv(recs) { return csv([['Record ID', 'Internal ID', 'Storage status', 'Created', 'Last modified', 'Original ID', 'Internal ref', 'Event date', 'Time', 'Time accuracy', 'Title', 'Category', 'Case numbers', 'Related records', 'Evidence refs', 'Status', 'Current version', 'Revision', 'Imported', 'Original file', 'SHA-256'], ...recs.map(r => [r.docId, r.recordUuid || r.uid, statusText(r), r.createdAt || r.source.importedAt, r.modifiedAt || r.source.importedAt, r.originalId, r.internalRef, r.eventDate, r.eventTime, r.timeAccuracy, r.title, catLabel(r.category), r.caseRefs.map(c => c.caseNumber).join('; '), r.relatedIds.join('; '), (r.manifestFiles || []).map(f => f.ref).filter(Boolean).join('; '), r.status, r.isCurrent === false ? 'No' : 'Yes', r.revision, r.source.importedAt, r.source.name, r.source.sha256])]); }
+
+/* ================= universal record linking ================= */
+/* A relationship is stored once (on the record that made it) and shown on both records.
+   Sources: IDs listed inside a record's own data (relatedIds) and links added in the library (links). */
+function relationsOf(r) {
+  const out = []; const add = (id, type, dir, owner, idx) => { if (!id || id === r.docId) return; if (out.some(x => x.id === id && x.type === type && x.dir === dir)) return; out.push({ id, rec: findCurrent(id) || null, type, dir, owner: owner || null, idx: idx ?? null }); };
+  (r.relatedIds || []).forEach(id => add(id, 'Listed in ' + r.docId, 'out', null));
+  (r.links || []).forEach((l, i) => add(l.to, l.type, 'out', r, i));
+  for (const o of current()) { if (o.uid === r.uid || o.docId === r.docId) continue;
+    if ((o.relatedIds || []).includes(r.docId)) add(o.docId, 'Listed in ' + o.docId, 'in', null);
+    (o.links || []).forEach((l, i) => { if (l.to === r.docId) add(o.docId, l.type, 'in', o, i); });
+    if ((o.manifestFiles || []).some(f => f.sha256 && f.sha256 === r.source?.sha256)) add(o.docId, 'Lists this file', 'in', null); }
+  return out;
+}
+const linkedIds = r => [...new Set(relationsOf(r).map(x => x.id))];
 
 /* ================= record detail ================= */
 let openUid = null;
 function openRecord(u) {
   const r = R.find(x => x.uid === u); if (!r) return; openUid = u; const g = GROUPS[groupOf(r)]; const ri = refInfo(r); const versions = byDoc(r.docId).sort((a, b) => (b.revision || 1) - (a.revision || 1) || (b.source.importedAt || '').localeCompare(a.source.importedAt || ''));
-  const backrefs = R.filter(o => o.uid !== r.uid && o.isCurrent !== false && ((o.relatedIds || []).includes(r.docId) || (o.links || []).some(l => l.to === r.docId) || (o.manifestFiles || []).some(f => f.sha256 && f.sha256 === r.source.sha256)));
+  const rel = relationsOf(r); const linked = rel.map(x => x.id);
   const kv = rows => `<div class="kv">${rows.filter(x => String(x[1] ?? '').trim()).map(([k, v]) => `<div class="k">${esc(k)}</div><div>${v && v.html ? v.html : esc(v)}</div>`).join('')}</div>`;
   const statusSel = (id) => `<select data-refstatus="${esc(id)}" aria-label="Status of ${esc(id)}">${[['missing', 'Referenced but missing'], ['awaiting', 'Awaiting collection'], ['unconfirmed', 'Unconfirmed reference']].map(([v, l]) => `<option value="${v}" ${(r.refStatus?.[id] || 'missing') === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
   $('recTitle').textContent = `${r.docId} — ${catLabel(r.category)}`;
@@ -466,7 +576,8 @@ function openRecord(u) {
   <div class="rec-head" style="--c:${g.color}"><div class="id">${g.sym} ${esc(r.docId)}${r.internalRef && r.originalId ? ` · internal ${esc(r.internalRef)}` : ''}</div><h2>${esc(r.title)}</h2>
     <div>${r.status === 'needs-review' ? '<span class="badge b-review">Needs review</span>' : '<span class="badge b-ok">Reviewed</span>'}${r.isCurrent === false ? '<span class="badge b-old">Not the current version</span>' : ''}<span class="method ${METHOD[r.method][1]}">${esc(METHOD[r.method][0])}</span></div>
     ${r.flags.map(f => `<p class="banner warn">${esc(f)}</p>`).join('')}</div>
-  <div class="actions"><button class="btn" type="button" id="rView">View original</button><button class="btn" type="button" id="rDl">Download original</button><button class="btn" type="button" id="rStatus">${r.status === 'needs-review' ? '✓ Mark as reviewed' : 'Mark as needs review'}</button><button class="btn danger" type="button" id="rDel">Remove from library</button></div>
+  <div class="status-line">${statusBadges(r)}<span class="muted">Internal ID ${esc(r.recordUuid || r.uid)}</span></div>
+  <div class="actions">${window.Record?.canEdit(r) ? '<button class="btn primary" type="button" id="rEdit">✎ Correct this record</button>' : ''}<button class="btn" type="button" id="rReady" aria-pressed="${r.readyForReport ? 'true' : 'false'}">${r.readyForReport ? '✓ Ready for Report' : 'Mark Ready for Report'}</button><button class="btn" type="button" id="rView">View original</button><button class="btn" type="button" id="rDl">Download original</button><button class="btn" type="button" id="rStatus">${r.status === 'needs-review' ? '✓ Mark as reviewed' : 'Mark as needs review'}</button><button class="btn danger" type="button" id="rDel">Remove from library</button></div>
   <h3 class="rec-sec">How it's organized <span class="muted" style="font-size:15px;font-weight:400">(editing this never changes the original file)</span></h3>
   <div class="edit-grid">
     <label>Title<input id="eTitle" value="${esc(r.title)}"></label>
@@ -484,22 +595,20 @@ function openRecord(u) {
     ${r.narrative.map(n => `<div class="muted" style="font-weight:700;font-size:15px">${esc(n.label)}</div><div class="narr">${esc(n.value)}</div>`).join('')}
     ${r.sequence.length ? `<h3 class="rec-sec">Event sequence</h3><div class="tablewrap"><table class="t"><thead><tr><th>Time</th><th>What happened</th><th>How known</th></tr></thead><tbody>${r.sequence.map(x => `<tr><td>${esc(x.when || 'Unknown')}</td><td>${esc(x.description)}</td><td>${esc(x.basis)}</td></tr>`).join('')}</tbody></table></div>` : ''}` : ''}
   ${ri.files.length ? `<h3 class="rec-sec">Files listed in this record</h3><div class="tablewrap"><table class="t"><thead><tr><th>Ref</th><th>File</th><th>Status</th></tr></thead><tbody>${ri.files.map(f => `<tr><td><b>${esc(f.ref || '')}</b></td><td>${esc(f.name)}<br><code style="font-size:12px">${esc(f.sha256 || 'no fingerprint recorded')}</code></td><td>${f.rec ? `<button class="btn small" type="button" data-open="${f.rec.uid}">Imported — open</button>` : '<span class="badge b-miss">Referenced evidence — not yet uploaded</span>'}</td></tr>`).join('')}</tbody></table></div>` : ''}
-  <h3 class="rec-sec">Related documentation</h3>
-  ${ri.related.length ? `<div class="tablewrap"><table class="t"><thead><tr><th>Record</th><th>Status</th></tr></thead><tbody>${ri.related.map(x => `<tr><td><b>${esc(x.id)}</b>${x.rec ? ' — ' + esc(x.rec.title) : ''}</td><td>${x.rec ? `<button class="btn small" type="button" data-open="${x.rec.uid}">Referenced and imported — open</button>` : statusSel(x.id)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">The original record lists no related IDs.</p>'}
-  ${(r.links || []).length ? `<div class="tablewrap" style="margin-top:8px"><table class="t"><thead><tr><th>Linked here</th><th>Relationship</th><th></th></tr></thead><tbody>${r.links.map((l, i) => { const t = findCurrent(l.to); return `<tr><td><b>${esc(l.to)}</b>${t ? ' — ' + esc(t.title) : ' <span class="badge b-miss">not in library</span>'}</td><td>${esc(l.type)}</td><td>${t ? `<button class="btn small" type="button" data-open="${t.uid}">Open</button>` : ''} <button class="btn small" type="button" data-unlink="${i}">Remove link</button></td></tr>`; }).join('')}</tbody></table></div>` : ''}
-  ${backrefs.length ? `<p style="margin:10px 0 4px"><b>Referenced by:</b></p><div>${backrefs.map(o => `<button class="refchip" type="button" data-open="${o.uid}" style="color:${colorOf(o)}">${esc(o.docId)}</button>`).join('')}</div>` : ''}
-  <div class="edit-grid" style="margin-top:10px"><label>Link to another record<input id="lnkTo" list="lnkList" placeholder="Type an ID or title"><datalist id="lnkList">${current().filter(o => o.uid !== r.uid).map(o => `<option value="${esc(o.docId)}">${esc(o.title)}</option>`).join('')}</datalist></label>
-    <label>Relationship<select id="lnkType">${['Related to same event', 'Supporting evidence', 'Follow-up', 'Revision', 'Same proceeding', 'Related communication', 'Related payment', 'Related receipt'].map(t => `<option>${t}</option>`).join('')}</select></label></div>
+  <h3 class="rec-sec">Linked records <span class="muted" style="font-size:15px;font-weight:400">(links show on both records)</span></h3>
+  ${rel.length ? `<div class="tablewrap"><table class="t"><thead><tr><th>Record</th><th>Relationship</th><th></th></tr></thead><tbody>${rel.map(x => `<tr><td><b style="color:${x.rec ? colorOf(x.rec) : 'inherit'}">${esc(x.id)}</b>${x.rec ? ' — ' + esc(x.rec.title) : ''}</td><td>${esc(x.type)}${x.dir === 'in' ? ' <span class="muted">(made on ' + esc(x.id) + ')</span>' : ''}</td><td>${x.rec ? `<button class="btn small" type="button" data-open="${x.rec.uid}">Open</button>` : (x.dir === 'out' && x.owner == null ? statusSel(x.id) : '<span class="badge b-miss">not in library</span>')} ${x.owner ? `<button class="btn small" type="button" data-unlink="${x.owner.uid}|${x.idx}">Remove link</button>` : ''}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">No linked records yet.</p>'}
+  <div class="edit-grid" style="margin-top:10px"><label>Link to another record<input id="lnkTo" list="lnkList" placeholder="Type an ID, e.g. POL003" autocomplete="off"><datalist id="lnkList">${current().filter(o => o.uid !== r.uid && o.docId !== r.docId && !linked.includes(o.docId)).map(o => `<option value="${esc(o.docId)}">${esc(o.title)}</option>`).join('')}</datalist></label>
+    <label>Relationship<select id="lnkType">${['Related to same event', 'Supporting evidence', 'Police report', 'Communication record', 'Follow-up', 'Same proceeding', 'Related payment', 'Related receipt'].map(t => `<option>${t}</option>`).join('')}</select></label></div>
   <div class="actions"><button class="btn small" type="button" id="lnkAdd">Add link</button></div>
   ${versions.length > 1 ? `<h3 class="rec-sec">Versions of ${esc(r.docId)}</h3><div class="tablewrap"><table class="t"><thead><tr><th>Revision</th><th>Imported</th><th>Fingerprint</th><th></th></tr></thead><tbody>${versions.map(v => `<tr><td>${esc(v.revision)}${v.copyOf ? ' (copy)' : ''}</td><td>${esc(stamp(v.source.importedAt))}</td><td><code style="font-size:12px">${esc(v.source.sha256.slice(0, 16))}…</code></td><td>${v.isCurrent !== false ? '<b>Current</b>' : `<button class="btn small" type="button" data-current="${v.uid}">Make current</button>`} ${v.uid !== r.uid ? `<button class="btn small" type="button" data-open="${v.uid}">Open</button>` : '(this one)'}</td></tr>`).join('')}</tbody></table></div>` : ''}
   <h3 class="rec-sec">Original file</h3>
-  ${kv([['File name', r.source.name], ['Imported from', r.source.path !== r.source.name ? r.source.path : ''], ['Type', r.source.typeLabel], ['Size', fmtSize(r.source.size)], ['SHA-256', { html: `<code style="font-size:13px;word-break:break-all">${esc(r.source.sha256)}</code>` }], ['Imported', stamp(r.source.importedAt)], ['How details were found', METHOD[r.method][2]], ['Data format', r.schema], ['Original ID', r.originalId || '(none — internal reference used)'], ['Internal reference', r.internalRef]])}
+  ${kv([['Internal ID', r.recordUuid || r.uid], ['Created', stamp(r.createdAt || r.source.importedAt)], ['Last modified', stamp(r.modifiedAt || r.source.importedAt)], ['Storage status', statusText(r)], ['File name', r.source.name], ['Imported from', r.source.path !== r.source.name ? r.source.path : ''], ['Type', r.source.typeLabel], ['Size', fmtSize(r.source.size)], ['SHA-256', { html: `<code style="font-size:13px;word-break:break-all">${esc(r.source.sha256)}</code>` }], ['Imported', stamp(r.source.importedAt)], ['How details were found', METHOD[r.method][2]], ['Data format', r.schema], ['Original ID', r.originalId || '(none — internal reference used)'], ['Internal reference', r.internalRef]])}
   <h3 class="rec-sec">Change history</h3>
   <div class="tablewrap"><table class="t"><thead><tr><th>When</th><th>What</th><th>From</th><th>To</th></tr></thead><tbody>${[...r.history].reverse().map(h => `<tr><td>${esc(stamp(h.at))}</td><td>${esc(h.field)}${h.note ? `<br><span class="muted" style="font-size:13px">${esc(h.note)}</span>` : ''}</td><td>${esc(h.from)}</td><td>${esc(h.to)}</td></tr>`).join('')}</tbody></table></div>`;
   const d = $('dlgRec'); if (!d.open) d.showModal(); $('recBody').scrollTop = 0;
 }
 async function updateRecord(r, changes, note) {
-  const now = new Date().toISOString(); const next = { ...r, history: [...r.history] };
+  const now = new Date().toISOString(); const next = { ...r, history: [...r.history], modifiedAt: now };
   for (const [k, label, val, show] of changes) { const before = JSON.stringify(r[k] ?? ''), after = JSON.stringify(val ?? ''); if (before === after) continue; next.history.push({ at: now, field: label, from: show ? show(r[k]) : String(r[k] ?? '') || '—', to: show ? show(val) : String(val ?? '') || '—', note }); next[k] = val; }
   if (next.history.length === r.history.length) return false;
   await putRecords([next]); const i = R.findIndex(x => x.uid === r.uid); R[i] = next; return true;
@@ -518,15 +627,30 @@ async function onRecClick(e) {
       if (r.kind === 'file') ch.push(['evidence', 'Evidence details', { ...r.evidence, description: $('eDesc').value.trim(), source: $('eSrc').value.trim(), acquired: $('eAcq').value, preservation: $('ePres').value, handling: $('eHand').value.trim() }, v => [v?.description, v?.source, v?.acquired, v?.preservation, v?.handling].filter(Boolean).join(' · ') || '—']);
       const ok = await updateRecord(r, ch, 'Archive classification changed — the original file is unchanged'); toast(ok ? 'Saved. The original file was not changed.' : 'No changes to save.'); openRecord(r.uid); renderAll(); return;
     }
-    if (t.id === 'lnkAdd') { const to = $('lnkTo').value.trim().toUpperCase(); if (!to) { toast('Type a record ID first.'); return; } if (to === r.docId) return; await updateRecord(r, [['links', 'Link added', [...(r.links || []), { to, type: $('lnkType').value }], v => (v || []).map(l => `${l.to} (${l.type})`).join(', ') || '—']]); openRecord(r.uid); return; }
-    if (t.dataset.unlink != null) { const links = r.links.filter((_, i) => i !== +t.dataset.unlink); await updateRecord(r, [['links', 'Link removed', links, v => (v || []).map(l => `${l.to} (${l.type})`).join(', ') || '—']]); openRecord(r.uid); return; }
+    if (t.id === 'rEdit') { $('dlgRec').close(); go('record'); if (!(await window.Record.loadRecord(r))) { go('library'); openRecord(r.uid); } return; }
+    if (t.id === 'rReady') { await updateRecord(r, [['readyForReport', 'Ready for Report', !r.readyForReport, v => v ? 'Yes' : 'No']]); openRecord(r.uid); renderAll(); toast(!r.readyForReport ? `${r.docId} marked Ready for Report.` : `${r.docId} is no longer marked Ready for Report.`); return; }
+    if (t.id === 'lnkAdd') {
+      const to = $('lnkTo').value.trim().toUpperCase(); if (!to) { toast('Type a record ID first.'); return; }
+      if (to === r.docId) { toast('A record can\'t be linked to itself.'); return; }
+      const target = findCurrent(to); if (!target) { toast(`${to} isn't in your Records Library. Check the ID.`); return; }
+      if (linkedIds(r).includes(to)) { toast(`${r.docId} and ${to} are already linked.`); return; }
+      await updateRecord(r, [['links', 'Link added', [...(r.links || []), { to, type: $('lnkType').value }], v => (v || []).map(l => `${l.to} (${l.type})`).join(', ') || '—']], `Shown on both ${r.docId} and ${to}`); openRecord(r.uid); renderAll(); toast(`Linked ${r.docId} ↔ ${to}.`); return;
+    }
+    if (t.dataset.unlink != null) {
+      const [ou, oi] = t.dataset.unlink.split('|'); const owner = R.find(x => x.uid === ou); if (!owner) return; const l = (owner.links || [])[+oi]; if (!l) return;
+      const other = owner.uid === r.uid ? l.to : owner.docId;
+      const v = await msg('Remove this link?', `<p>${esc(r.docId)} and ${esc(other)} will no longer show each other as linked (“${esc(l.type)}”). Both records stay in the library. The removal is written to the change history of ${esc(owner.docId)}.</p>`, [{ label: 'Keep the link', value: 'no' }, { label: 'Remove link', value: 'yes', danger: true }]);
+      if (!$('dlgRec').open) $('dlgRec').showModal(); if (v !== 'yes') return;
+      await updateRecord(owner, [['links', 'Link removed', owner.links.filter((_, i) => i !== +oi), v2 => (v2 || []).map(x => `${x.to} (${x.type})`).join(', ') || '—']]); openRecord(r.uid); renderAll(); return;
+    }
     if (t.dataset.current) { const target = R.find(x => x.uid === t.dataset.current); const now = new Date().toISOString(); const ups = byDoc(target.docId).map(v => ({ ...v, isCurrent: v.uid === target.uid, history: v.isCurrent !== false === (v.uid === target.uid) ? v.history : [...v.history, { at: now, field: 'Current version', from: v.isCurrent !== false ? 'Yes' : 'No', to: v.uid === target.uid ? 'Yes' : 'No' }] })); await putRecords(ups); ups.forEach(u => { R[R.findIndex(x => x.uid === u.uid)] = u; }); openRecord(r.uid); renderAll(); toast('Current version updated.'); return; }
     if (t.id === 'rDel') {
-      const v = await msg('Remove from library?', `<p>This deletes <b>${esc(r.docId)}</b> and its stored original file from this library. It can't be undone unless you have a backup.</p>`, [{ label: 'Cancel', value: 'no' }, { label: 'Remove', value: 'yes', danger: true }]);
+      const links = linkedIds(r); const reps = reportsWith(r);
+      const v = await msg('Remove from library?', `<p>This deletes <b>${esc(r.docId)}</b>${r.isCurrent !== false && byDoc(r.docId).length > 1 ? ' (this version only)' : ''} and its stored original file from this library. It can't be undone unless you have a backup.</p>${links.length ? `<p class="banner warn"><b>${esc(r.docId)} is linked to ${esc(links.join(', '))}.</b> Those records will show it as missing. Consider keeping it and correcting it instead.</p>` : ''}${reps.length ? `<p class="hint">It appears in ${esc(reps.join(', '))}. Reports you already exported are not changed.</p>` : ''}<p class="hint">Record numbers are never reused, even after removal.</p>`, [{ label: 'Cancel', value: 'no' }, { label: 'Remove', value: 'yes', danger: true }]);
       if (v !== 'yes') { $('dlgRec').showModal(); return; }
-      const others = R.filter(x => x.uid !== r.uid && x.source.fileId === r.source.fileId);
+      const others = R.filter(x => x.uid !== r.uid && x.source.fileId === r.source.fileId); const keepNums = window.App.counters();
       await tx(['records', 'files'], 'readwrite', t2 => { t2.objectStore('records').delete(r.uid); if (!others.length) t2.objectStore('files').delete(r.source.fileId); });
-      R = R.filter(x => x.uid !== r.uid);
+      R = R.filter(x => x.uid !== r.uid); await window.App.saveCounters(keepNums);
       if (r.isCurrent !== false) { const alt = byDoc(r.docId).sort((a, b) => (b.revision || 1) - (a.revision || 1))[0]; if (alt) { alt.isCurrent = true; await putRecords([alt]); } }
       $('dlgRec').close(); renderAll(); toast(`${r.docId} removed.`); return;
     }
@@ -573,8 +697,8 @@ const SECTIONS = [['cover', 'Cover page', 'Cover page'], ['index', 'Master docum
 let secOrder = SECTIONS.map(s => s[0]), secOn = new Set(secOrder); const pkExcluded = new Set(); let pkCaseSel = null, pkCatSel = null;
 function pkRange() { const v = $('pkRange').value; const t = new Date(); if (v === 'm1') return [`${t.getFullYear()}-${pad(t.getMonth() + 1)}-01`, todayISO()]; if (v === 'm2') { const s = new Date(t.getFullYear(), t.getMonth() - 1, 1); return [`${s.getFullYear()}-${pad(s.getMonth() + 1)}-01`, todayISO()]; } if (v === 'custom') return [$('pkFrom').value, $('pkTo').value]; return ['', '']; }
 function pkCandidates() {
-  const [from, to] = pkRange(); const inclReview = $('pkReview').checked;
-  return current().filter(r => (inclReview || r.status !== 'needs-review') && (!from || !r.eventDate || r.eventDate >= from) && (!to || !r.eventDate || r.eventDate <= to) && (from || to ? (r.eventDate || r.kind === 'file') : true)
+  const [from, to] = pkRange(); const inclReview = $('pkReview').checked; const readyOnly = $('pkReadyOnly').checked;
+  return current().filter(r => (inclReview || r.status !== 'needs-review') && (!readyOnly || r.readyForReport) && (!from || !r.eventDate || r.eventDate >= from) && (!to || !r.eventDate || r.eventDate <= to) && (from || to ? (r.eventDate || r.kind === 'file') : true)
     && (r.caseRefs.length ? r.caseRefs.some(c => pkCaseSel.has(c.caseNumber)) : pkCaseSel.has('__none')) && pkCatSel.has(groupOf(r))).sort((a, b) => sortKey(a).localeCompare(sortKey(b)));
 }
 const pkSelected = () => pkCandidates().filter(r => !pkExcluded.has(r.uid));
@@ -593,7 +717,7 @@ function updatePkSummary() {
   const sel = pkSelected(); const cand = pkCandidates(); const nr = current().filter(r => r.status === 'needs-review').length;
   $('pkPickCount').textContent = `(${sel.length} of ${cand.length} included)`;
   const ds = sel.map(r => r.eventDate).filter(Boolean).sort();
-  $('pkSummary').innerHTML = sel.length ? `<b>${sel.length} record${sel.length === 1 ? '' : 's'}</b>${ds.length ? ` · ${esc(fmtDate(ds[0]))} – ${esc(fmtDate(ds[ds.length - 1]))}` : ''} · report number <b>${peekPkt()}</b>${!$('pkReview').checked && nr ? `<br>${nr} record(s) still needing review are left out until you check them.` : ''}` : (R.length?'No records match these dates and filters.':'Capture or import a record to start your packet.');
+  $('pkSummary').innerHTML = sel.length ? `<b>${sel.length} record${sel.length === 1 ? '' : 's'}</b>${ds.length ? ` · ${esc(fmtDate(ds[0]))} – ${esc(fmtDate(ds[ds.length - 1]))}` : ''} · report number <b>${peekPkt()}</b>${!$('pkReview').checked && nr ? `<br>${nr} record(s) still needing review are left out until you check them.` : ''}` : (R.length ? ($('pkReadyOnly').checked ? 'No records marked Ready for Report match these dates and filters. Mark records in the Records Library, or untick “Only records marked Ready for Report”.' : 'No records match these dates and filters.') : 'Save a record with Save & Send (or import one) to start your report.');
   $('pkIncludes').innerHTML = secOrder.filter(k => secOn.has(k)).map(k => `<li>${esc(SECTIONS.find(x => x[0] === k)[2])}</li>`).join('');
   const custom = $('pkRange').value !== 'all' || pkExcluded.size || $('pkKids').checked || !$('pkNarr').checked || [...pkCatSel].length < GROUP_ORDER.length || secOn.size < SECTIONS.length;
   $('pkCustomHint').textContent = custom ? '· customized' : '· everything included';
@@ -606,6 +730,7 @@ function peekPkt() { const y = new Date().getFullYear(); const n = S.pkt.year ==
 async function takePkt() { const y = new Date().getFullYear(); if (S.pkt.year !== y) S.pkt = { year: y, next: 1 }; const id = `PKT-${y}-${pad(S.pkt.next, 4)}`; S.pkt.next++; await saveSettings(); return id; }
 async function sourceDigest(recs) { return L.sha256(JSON.stringify(recs.map(r => [r.docId, r.revision, r.source.sha256]).sort())); }
 function redactor(rec, on) { if (!on) return s => s; const names = [...new Set([...(rec.children || []), ...String(rec.childrenText || '').split(/,|&|\band\b/)].map(s => s.trim()).filter(s => s.length > 1))]; if (!names.length) return s => s; const re = new RegExp('\\b(' + names.map(n => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')\\b', 'gi'); return s => String(s ?? '').replace(re, '[child]'); }
+const legendBlock = recs => ({ t: 'legend', items: GROUP_ORDER.filter(g => recs.some(r => groupOf(r) === g)).map(g => ({ label: GROUPS[g].label, color: GROUPS[g].swatch, name: GROUPS[g].colorName })) });
 function buildBlocks(recs, o) {
   const B = []; const brk = () => B.push({ t: 'break' }); let first = true; const startSec = () => { if (!first) brk(); first = false; };
   const dated = recs.filter(r => r.eventDate && !isAttachment(r)); const range = dated.length ? [dated[0].eventDate, dated[dated.length - 1].eventDate] : ['', ''];
@@ -616,7 +741,7 @@ function buildBlocks(recs, o) {
       B.push({ t: 'cover', title: o.title, rows: [['Report ID', o.pkt], ['Date range', o.from || o.to ? `${fmtDate(o.from) || 'start'} – ${fmtDate(o.to) || 'present'}` : range[0] ? `${fmtDate(range[0])} – ${fmtDate(range[1])} (all dates)` : 'All dates'], ['Case number(s)', cs.length ? cs.join(', ') : 'None listed'], ['Records included', String(recs.length)], ['Generated', stamp(o.generated)], ['Copy type', o.watermark ? 'Presentation copy (watermarked)' : 'Clean court-review copy'], ['Source digest (SHA-256)', o.digest]],
         contents: secOrder.filter(s => secOn.has(s) && s !== 'cover').map(s => SECTIONS.find(x => x[0] === s)[1]),
         note: 'This report is an organizational summary prepared by the person who kept these records, for attorney or court review. It is not a court-issued, certified, or authenticated document, and it does not establish that any statement in it is true. Original files are preserved separately and unchanged.' }); continue; }
-    if (k === 'index' && recs.length) { startSec(); B.push({ t: 'sec', title: 'Master document index' }); B.push({ t: 'table', cols: [{ h: 'Record ID', w: .115, bold: 1 }, { h: 'Date', w: .115 }, { h: 'Time', w: .1 }, { h: 'Title', w: .25 }, { h: 'Category', w: .13 }, { h: 'Case', w: .11 }, { h: 'Evidence', w: .1 }, { h: 'Status', w: .08 }], rows: recs.map(r => { const red = redactor(r, o.kids); return { cells: [r.docId, fmtDate(r.eventDate) || '—', r.eventTime ? fmtTime(r.eventTime) + (r.timeAccuracy === 'Approximate' ? ' ~' : '') : 'Unknown', red(r.title), catLabel(r.category), r.caseRefs.map(c => c.caseNumber).join(', '), evRefs(r), r.status === 'needs-review' ? 'Check' : 'OK'], bar: colorOf(r), color: colorOf(r) }; }) }); B.push({ t: 'note', text: '"~" means the time is approximate. "Check" means the record\'s details have not yet been confirmed.' }); continue; }
+    if (k === 'index' && recs.length) { startSec(); B.push({ t: 'sec', title: 'Master document index' }); B.push({ t: 'table', cols: [{ h: 'Record ID', w: .115, bold: 1 }, { h: 'Date', w: .115 }, { h: 'Time', w: .1 }, { h: 'Title', w: .25 }, { h: 'Category', w: .13 }, { h: 'Case', w: .11 }, { h: 'Evidence', w: .1 }, { h: 'Status', w: .08 }], rows: recs.map(r => { const red = redactor(r, o.kids); return { cells: [r.docId, fmtDate(r.eventDate) || '—', r.eventTime ? fmtTime(r.eventTime) + (r.timeAccuracy === 'Approximate' ? ' ~' : '') : 'Unknown', red(r.title), catLabel(r.category), r.caseRefs.map(c => c.caseNumber).join(', '), evRefs(r), r.status === 'needs-review' ? 'Check' : 'OK'], bar: colorOf(r), color: colorOf(r) }; }) }); B.push(legendBlock(recs)); B.push({ t: 'note', text: '"~" means the time is approximate. "Check" means the record\'s details have not yet been confirmed.' }); continue; }
     if (k === 'calendar' && dated.length) {
       const s = parseD(o.from || dated[0].eventDate), e = parseD(o.to || dated[dated.length - 1].eventDate); let months = []; for (let d = new Date(s.getFullYear(), s.getMonth(), 1); d <= e; d = new Date(d.getFullYear(), d.getMonth() + 1, 1)) months.push([d.getFullYear(), d.getMonth()]);
       let trimmed = false; if (months.length > 24) { months = months.slice(-24); trimmed = true; }
@@ -625,7 +750,7 @@ function buildBlocks(recs, o) {
         startSec(); const pair = months.slice(i, i + 2); B.push({ t: 'sec', title: 'Calendar — ' + pair.map(([y, m]) => monthName(y, m)).join(' & ') });
         const busyDays = [];
         for (const [y, m] of pair) { const ev = {}; for (const [d, rs] of Object.entries(byDate)) if (d.startsWith(`${y}-${pad(m + 1)}`)) { ev[+d.slice(8)] = rs.map(r => ({ id: r.docId, color: colorOf(r) })); if (rs.length > 3) busyDays.push(`${fmtDate(d)}: ${rs.map(r => r.docId).join(', ')}`); } B.push({ t: 'cal', y, m, ev }); }
-        const present = GROUP_ORDER.filter(g => dated.some(r => groupOf(r) === g)); B.push({ t: 'note', text: 'Key: ' + present.map(g => GROUPS[g].label).join(' · ') + '. Each date lists record IDs; the category is also shown by the ID prefix (for example POLI = police interaction), so the calendar reads correctly in black and white.' });
+        B.push(legendBlock(dated)); B.push({ t: 'note', text: 'Each date lists record IDs. The ID prefix also shows the category (for example POL = police report), so the calendar reads correctly in black and white.' });
         if (busyDays.length) B.push({ t: 'note', text: 'Dates with more than three records: ' + busyDays.join('; ') });
       }
       if (trimmed) B.push({ t: 'note', text: 'The calendar shows the most recent 24 months. The master index lists every record.' });
@@ -666,11 +791,12 @@ function buildBlocks(recs, o) {
 }
 function blocksHtml(B, o) {
   const pages = [[]]; for (const b of B) { if (b.t === 'break') pages.push([]); else pages[pages.length - 1].push(b); }
-  const head = `<div class="pg-head"><span>DOCUMENTATION REPORT</span><span>${esc(o.pkt)}</span></div>`; const foot = `<div class="pg-foot">${esc(o.pkt)} · Generated ${esc(stamp(o.generated))} · Source digest ${esc(o.digest.slice(0, 12))}</div>`;
+  const head = `<div class="pg-head"><img class="pg-logo" src="assets/logo.webp" alt="Inkyridion"><span>DOCUMENTATION REPORT</span><span>${esc(o.pkt)}</span></div>`; const foot = `<div class="pg-foot">${esc(o.pkt)} · Generated ${esc(stamp(o.generated))} · Source digest ${esc(o.digest.slice(0, 12))}</div>`;
   const cell = c => esc(c);
-  return pages.filter(p => p.length).map(p => `<div class="paper${o.watermark ? ' wm' : ''}" style="--pa:#1f2d4d;--wm:${(o.watermark || 0) * 0.07}">${head}${p.map(b => {
-    if (b.t === 'cover') return `<h1>${esc(b.title)}</h1><div class="pkv cover-meta">${b.rows.map(([k, v]) => `<div class="k">${esc(k)}</div><div>${esc(v)}</div>`).join('')}</div><p class="pl" style="margin-top:20px">Contents</p><ol>${b.contents.map(c => `<li>${esc(c)}</li>`).join('')}</ol><p class="cover-note">${esc(b.note)}</p>`;
-    if (b.t === 'sec') return `<div class="sec" style="--sc:${b.color || '#1f2d4d'}">${esc(b.title)}</div>`;
+  return pages.filter(p => p.length).map(p => `<div class="paper${o.watermark ? ' wm' : ''}" style="--pa:${L.DOC.head};--wm:${(o.watermark || 0) * 0.07}">${head}${p.map(b => {
+    if (b.t === 'legend') return `<div class="plegend">${b.items.map(it => `<span><i style="background:${it.color}"></i>${esc(it.label)} <em>${esc(it.name)}</em></span>`).join('')}</div>`;
+    if (b.t === 'cover') return `<div class="cover-logo"><img src="assets/logo.webp" alt="Inkyridion"></div><h1>${esc(b.title)}</h1><div class="pkv cover-meta">${b.rows.map(([k, v]) => `<div class="k">${esc(k)}</div><div>${esc(v)}</div>`).join('')}</div><p class="pl" style="margin-top:20px">Contents</p><ol>${b.contents.map(c => `<li>${esc(c)}</li>`).join('')}</ol><p class="cover-note">${esc(b.note)}</p>`;
+    if (b.t === 'sec') return `<div class="sec" style="--sc:${b.color || L.PAL.moodyBlue}">${esc(b.title)}</div>`;
     if (b.t === 'sub') return `<div class="subh" style="--sc:${b.color}"><span>${esc(b.title)}</span><span>${esc(b.right || '')}</span></div>`;
     if (b.t === 'kv') return `<div class="pkv">${b.rows.map(([k, v]) => `<div class="k">${esc(k)}</div><div>${esc(v)}</div>`).join('')}</div>`;
     if (b.t === 'para') return `<div class="pl">${esc(b.label)}</div><div class="pt">${esc(b.text)}</div>`;
@@ -681,12 +807,13 @@ function blocksHtml(B, o) {
   }).join('')}${foot}</div>`).join('');
 }
 function blocksPdf(B, o) {
-  const P = L.pdf({ accent: '#2a2a2e', headerLeft: 'DOCUMENTATION REPORT', headerRight: o.pkt, watermark: o.watermark || 0, footer: () => `${o.pkt}  ·  Generated ${stamp(o.generated)}  ·  Source digest ${o.digest.slice(0, 12)}` });
+  const P = L.pdf({ accent: L.DOC.head, headerLeft: 'DOCUMENTATION REPORT', headerRight: o.pkt, watermark: o.watermark || 0, footer: () => `${o.pkt}  ·  Generated ${stamp(o.generated)}  ·  Source digest ${o.digest.slice(0, 12)}` });
   P.newPage(); let fresh = true;
   for (const b of B) {
     if (b.t === 'break') { if (!fresh) P.newPage(); fresh = true; continue; } fresh = false;
-    if (b.t === 'cover') { P.y += 60; for (const s of P.wrap(b.title, P.CW, 24, true)) { P.text(s, P.ML, P.y + 22, 24, true, P.NAVY); P.y += 30; } P.y += 16; b.rows.forEach(([k, v]) => P.kv(k, v, 160)); P.y += 18; P.text('CONTENTS', P.ML, P.y + 10, 9.5, true, P.SLATE); P.y += 18; b.contents.forEach((c, i) => { P.text(`${i + 1}.  ${c}`, P.ML + 6, P.y + 10, 10.5, false, P.INK); P.y += 16; }); P.y += 20; P.line(P.ML, P.y, P.MR, P.y); P.y += 8; P.note(b.note, 9); }
-    else if (b.t === 'sec') P.section(b.title, b.color || '#2a2a2e');
+    if (b.t === 'legend') { P.ensure(34); P.y += 4; let x = P.ML; for (const it of b.items) { const label = `${it.label} (${it.name})`; const w = 13 + P.tw(label, 8.4, false) + 16; if (x + w > P.MR) { x = P.ML; P.y += 15; P.ensure(15); } P.rect(x, P.y + 1, 9, 9, it.color); P.text(label, x + 13, P.y + 9, 8.4, false, P.INK); x += w; } P.y += 20; }
+    else if (b.t === 'cover') { if (P.hasLogo) { P.rect(P.ML, P.y + 6, P.CW, 120, L.DOC.band); const lw = P.logoW(96); P.logo(P.ML + (P.CW - lw) / 2, P.y + 18, 96); P.y += 140; } else P.y += 60; for (const s of P.wrap(b.title, P.CW, 24, true)) { P.text(s, P.ML, P.y + 22, 24, true, P.NAVY); P.y += 30; } P.y += 16; b.rows.forEach(([k, v]) => P.kv(k, v, 160)); P.y += 18; P.text('CONTENTS', P.ML, P.y + 10, 9.5, true, P.SLATE); P.y += 18; b.contents.forEach((c, i) => { P.text(`${i + 1}.  ${c}`, P.ML + 6, P.y + 10, 10.5, false, P.INK); P.y += 16; }); P.y += 20; P.line(P.ML, P.y, P.MR, P.y); P.y += 8; P.note(b.note, 9); }
+    else if (b.t === 'sec') P.section(b.title, b.color || L.PAL.moodyBlue);
     else if (b.t === 'sub') P.sub(b.title, b.color, b.right);
     else if (b.t === 'kv') b.rows.forEach(([k, v]) => P.kv(k, v));
     else if (b.t === 'para') P.para(b.label, b.text);
@@ -696,7 +823,7 @@ function blocksPdf(B, o) {
       const ch = 44, cw = P.CW / 7; const first = new Date(b.y, b.m, 1).getDay(), days = new Date(b.y, b.m + 1, 0).getDate(); const rowsN = Math.ceil((first + days) / 7);
       P.ensure(34 + rowsN * ch + 10); P.text(monthName(b.y, b.m), P.ML, P.y + 13, 12.5, true, P.NAVY); P.y += 20;
       ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].forEach((w, i) => { P.rect(P.ML + i * cw, P.y, cw, 14, P.NAVY); P.text(w, P.ML + i * cw + 4, P.y + 10, 8, true, '#ffffff'); }); P.y += 14;
-      for (let c = 0; c < rowsN * 7; c++) { const d = c - first + 1; const x = P.ML + (c % 7) * cw, top = P.y + Math.floor(c / 7) * ch; P.box(x, top, cw, ch, '#c9d0db', .6); if (d < 1 || d > days) continue; P.text(String(d), x + 3, top + 9, 7.5, true, P.SLATE); const ev = b.ev[d] || []; ev.slice(0, 3).forEach((e, j) => P.text(e.id, x + 3, top + 19 + j * 8.4, 7, true, e.color)); if (ev.length > 3) P.text(`+${ev.length - 3} more`, x + 3, top + 19 + 3 * 8.4, 6.6, false, P.SLATE); }
+      for (let c = 0; c < rowsN * 7; c++) { const d = c - first + 1; const x = P.ML + (c % 7) * cw, top = P.y + Math.floor(c / 7) * ch; P.box(x, top, cw, ch, L.DOC.grid, .6); if (d < 1 || d > days) continue; P.text(String(d), x + 3, top + 9, 7.5, true, P.SLATE); const ev = b.ev[d] || []; ev.slice(0, 3).forEach((e, j) => P.text(e.id, x + 3, top + 19 + j * 8.4, 7, true, e.color)); if (ev.length > 3) P.text(`+${ev.length - 3} more`, x + 3, top + 19 + 3 * 8.4, 6.6, false, P.SLATE); }
       P.y += rowsN * ch + 12;
     }
   }
@@ -720,8 +847,8 @@ async function runReport() {
     setTimeout(() => $('pkResult').scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
   } catch (e) { msg('Report not built', `<p>${esc(e.message)}</p>`); } finally { unbusy(); }
 }
-async function runReportFromAnywhere() {
-  if (!key) return;
+async function runReportFromAnywhere(readyOnly) {
+  if (!key) return; if (readyOnly === true) $('pkReadyOnly').checked = true;
   if (window.Record?.hasUnsaved()) {
     const v = await msg('Save this record first?', '<p>The record you\'re working on hasn\'t been saved yet, so it won\'t be in the report.</p>', [{ label: 'Cancel', value: 'no' }, { label: 'Continue without saving', value: 'skip' }, { label: 'Save and continue', value: 'save', primary: true }]);
     if (!v || v === 'no') return; if (v === 'save' && !(await window.Record.save())) return;
@@ -743,7 +870,8 @@ async function runReportFromAnywhere() {
 async function pkPreview() { try { const { recs, o } = await packetOptions(false); $('pvBody').innerHTML = blocksHtml(buildBlocks(recs, o), o); $('dlgPreview').showModal(); } catch (e) { msg('Can\'t preview yet', `<p>${esc(e.message)}</p>`); } }
 function tryPdf(B, o) { try { return blocksPdf(B, o); } catch (e) { if (e.unsupported) { const err = new Error('unsupported'); err.unsupported = e.unsupported; throw err; } throw e; } }
 async function unsupportedDialog(chars) { const v = await msg('Some characters can\'t go in a direct PDF', `<p>The built-in PDF maker can't show: <b>${esc(chars.join('  '))}</b></p><p>Use <b>Print / Save PDF</b> instead — it shows every character.</p>`, [{ label: 'Cancel', value: 'no' }, { label: 'Print / Save PDF instead', value: 'print', primary: true }]); if (v === 'print') pkPrint(); }
-async function logPacket(o, recs, kind, sha) { S.packets = [...(S.packets || []), { id: o.pkt, at: o.generated, kind, records: recs.length, sha256: sha || '' }].slice(-500); await saveSettings(); updatePkSummary(); }
+/* The report log is what marks records "Included in Report"; source records are never modified or deleted. */
+async function logPacket(o, recs, kind, sha) { S.packets = [...(S.packets || []), { id: o.pkt, at: o.generated, kind, records: recs.length, recs: recs.map(r => ({ uid: r.uid, id: r.docId, rev: r.revision })), sha256: sha || '' }].slice(-500); await saveSettings(); updatePkSummary(); }
 async function pkPdf(sectionsOverride, nameSuffix) {
   const saved = [secOrder, secOn]; if (sectionsOverride) { secOrder = sectionsOverride; secOn = new Set(sectionsOverride); }
   try { const { recs, o } = await packetOptions(false); const B = buildBlocks(recs, o); try { blocksPdf(B, { ...o }); } catch (e) { if (e.unsupported) { [secOrder, secOn] = saved; return unsupportedDialog(e.unsupported); } throw e; }
@@ -783,7 +911,7 @@ function printCalendar() {
   if (noPrintHere()) return;
   const recs = tlFiltered().filter(r => r.eventDate); const m2 = new Date(calStart.getFullYear(), calStart.getMonth() + 1, 1); const blocks = [{ t: 'sec', title: 'Calendar — ' + monthName(calStart.getFullYear(), calStart.getMonth()) + ' & ' + monthName(m2.getFullYear(), m2.getMonth()) }];
   for (const d of [calStart, m2]) { const ev = {}; recs.filter(r => r.eventDate.startsWith(`${d.getFullYear()}-${pad(d.getMonth() + 1)}`)).forEach(r => (ev[+r.eventDate.slice(8)] = ev[+r.eventDate.slice(8)] || []).push({ id: r.docId, color: colorOf(r) })); blocks.push({ t: 'cal', y: d.getFullYear(), m: d.getMonth(), ev }); }
-  blocks.push({ t: 'note', text: 'Key: ' + GROUP_ORDER.filter(g => recs.some(r => groupOf(r) === g)).map(g => GROUPS[g].label).join(' · ') });
+  blocks.push(legendBlock(recs));
   $('printRoot').innerHTML = blocksHtml(blocks, { pkt: 'Calendar', generated: new Date().toISOString(), digest: '—' }); setTimeout(() => print(), 100);
 }
 
@@ -809,13 +937,13 @@ async function verifyZip(file) {
 async function makeBackup() {
   busy('Preparing encrypted backup…');
   try {
-    const vault = await idbGetV('meta', 'vault'), srow = await idbGetV('meta', 'settings'); const recs = await idbAll('records'), files = await idbAll('files'); const createdAt = new Date().toISOString();
+    const vault = await idbGetV('meta', 'vault'), srow = await idbGetV('meta', 'settings'); const recs = await idbAll('records'), files = await idbAll('files'), drafts = await idbAll('drafts'); const createdAt = new Date().toISOString();
     const b = x => L.toB64(x);
-    const j = { format: 'documentation-vault-backup', version: 1, createdAt, vault: { salt: b(vault.salt), iter: vault.iter, check: { iv: b(vault.check.iv), ct: b(vault.check.ct) }, created: vault.created }, settings: srow ? { iv: b(srow.iv), ct: b(srow.ct) } : null, records: recs.map(r => ({ id: r.id, iv: b(r.iv), ct: b(r.ct) })), files: files.map(f => ({ id: f.id, iv: b(f.iv), path: `files/${f.id}.bin`, size: f.ct.length })), counts: { records: recs.length, files: files.length } };
+    const j = { format: 'documentation-vault-backup', version: 1, createdAt, vault: { salt: b(vault.salt), iter: vault.iter, check: { iv: b(vault.check.iv), ct: b(vault.check.ct) }, created: vault.created }, settings: srow ? { iv: b(srow.iv), ct: b(srow.ct) } : null, records: recs.map(r => ({ id: r.id, iv: b(r.iv), ct: b(r.ct) })), files: files.map(f => ({ id: f.id, iv: b(f.iv), path: `files/${f.id}.bin`, size: f.ct.length })), drafts: drafts.map(d => ({ id: d.id, meta: { iv: b(d.meta.iv), ct: b(d.meta.ct) }, body: { iv: b(d.body.iv), ct: b(d.body.ct) } })), counts: { records: recs.length, files: files.length, drafts: drafts.length } };
     const entries = [{ name: 'vault-backup.json', data: L.enc.encode(JSON.stringify(j)) }, ...files.map(f => ({ name: `files/${f.id}.bin`, data: f.ct })), { name: 'READ-ME.txt', data: 'Encrypted library backup.\nEverything inside is encrypted with your library passphrase. Restore it from Settings → Restore from backup.\nKeep at least two copies in different places. A forgotten passphrase cannot be recovered.\n' }];
     unbusy(); if (!(await saveBlob(L.zip(entries), `encrypted-library-backup-${todayISO()}.zip`))) return;
     S.lastBackup = { at: createdAt, records: recs.length, files: files.length, verified: false }; await saveSettings(); renderSettings(); renderHome();
-    msg('Backup downloaded', `<p>${recs.length} record(s) and ${files.length} file(s), encrypted.</p><p>To be sure it works, use <b>Test a backup</b> and choose the file you just saved. Keep a second copy somewhere else (another drive or cloud folder).</p>`);
+    msg('Backup downloaded', `<p>${recs.length} record(s), ${files.length} file(s)${drafts.length ? ` and ${drafts.length} draft(s)` : ''}, encrypted.</p><p>To be sure it works, use <b>Test a backup</b> and choose the file you just saved. Keep a second copy somewhere else (another drive or cloud folder).</p>`);
   } catch (e) { msg('Backup not created', `<p>${esc(e.message)}</p>`); } finally { unbusy(); }
 }
 async function readBackup(file) {
@@ -833,14 +961,15 @@ async function openBackup(file, purpose) {
   for (const f of j.files) { const e = ents.find(x => x.name === f.path); if (!e || !e.data) { problems.push(`File ${f.id} is missing from the backup.`); continue; } files.set(f.id, { iv: L.fromB64(f.iv), ct: e.data }); }
   let checked = 0;
   for (const { rec } of recs) { const fr = files.get(rec.source?.fileId); if (!fr) { problems.push(`${rec.docId}: original file missing.`); continue; } try { const u8 = await unsealBytes(fr, k); if (await L.sha256(u8) !== rec.source.sha256) problems.push(`${rec.docId}: file fingerprint doesn't match.`); else checked++; } catch { problems.push(`${rec.docId}: file failed its integrity check.`); } }
+  const drafts = []; for (const d of j.drafts || []) { try { const row = { id: d.id, meta: { iv: L.fromB64(d.meta.iv), ct: L.fromB64(d.meta.ct) }, body: { iv: L.fromB64(d.body.iv), ct: L.fromB64(d.body.ct) } }; await unseal(row.meta, k); await unseal(row.body, k); drafts.push(row); } catch { problems.push(`Draft ${d.id} failed its integrity check.`); } }
   let settings = null; if (j.settings) { try { settings = await unseal({ iv: L.fromB64(j.settings.iv), ct: L.fromB64(j.settings.ct) }, k); } catch { problems.push('Settings failed their integrity check.'); } }
-  void purpose; return { j, k, recs, files, problems, checked, settings };
+  void purpose; return { j, k, recs, files, problems, checked, settings, drafts };
 }
 async function testBackup(file) {
   try { const b = await openBackup(file, 'test'); if (!b) return; unbusy();
     const ok = !b.problems.length;
     if (ok && S.lastBackup && S.lastBackup.at === b.j.createdAt) { S.lastBackup.verified = new Date().toISOString(); await saveSettings(); renderSettings(); renderHome(); }
-    msg(ok ? 'Backup test passed' : 'Backup has problems', `<p class="banner ${ok ? 'ok' : 'warn'}">Made ${esc(stamp(b.j.createdAt))}: ${b.recs.length} record(s) decrypted, ${b.checked} original file(s) decrypted and matched to their fingerprints.</p>${ok ? '<p>This backup can be restored with its passphrase.</p>' : `<ul>${b.problems.slice(0, 30).map(p => `<li>${esc(p)}</li>`).join('')}</ul>`}`);
+    msg(ok ? 'Backup test passed' : 'Backup has problems', `<p class="banner ${ok ? 'ok' : 'warn'}">Made ${esc(stamp(b.j.createdAt))}: ${b.recs.length} record(s) decrypted, ${b.checked} original file(s) decrypted and matched to their fingerprints${b.drafts.length ? `, ${b.drafts.length} draft(s) readable` : ''}.</p>${ok ? '<p>This backup can be restored with its passphrase.</p>' : `<ul>${b.problems.slice(0, 30).map(p => `<li>${esc(p)}</li>`).join('')}</ul>`}`);
   } catch (e) { unbusy(); msg('Backup test failed', `<p>${esc(e.message)}</p>`); }
 }
 async function restoreBackup(file, welcome) {
@@ -850,8 +979,8 @@ async function restoreBackup(file, welcome) {
     const good = b.recs.filter(x => b.files.has(x.rec.source?.fileId) && !b.problems.some(p => p.startsWith(x.rec.docId + ':')));
     if (welcome) {
       const v = b.j.vault; const srow = b.j.settings;
-      await tx(['meta', 'records', 'files'], 'readwrite', t => { const m = t.objectStore('meta'); m.put({ v: 1, salt: L.fromB64(v.salt), iter: v.iter, check: { iv: L.fromB64(v.check.iv), ct: L.fromB64(v.check.ct) }, created: v.created || b.j.createdAt }, 'vault'); if (srow) m.put({ iv: L.fromB64(srow.iv), ct: L.fromB64(srow.ct) }, 'settings'); const rs = t.objectStore('records'), fs = t.objectStore('files'); for (const x of good) { rs.put({ id: x.row.id, iv: L.fromB64(x.row.iv), ct: L.fromB64(x.row.ct) }); const f = b.files.get(x.rec.source.fileId); fs.put({ id: x.rec.source.fileId, iv: f.iv, ct: f.ct }); } });
-      key = b.k; S = { ...defaultSettings(), ...(b.settings || {}) }; R = good.map(x => x.rec); unbusy(); enterApp();
+      await tx(['meta', 'records', 'files', 'drafts'], 'readwrite', t => { const m = t.objectStore('meta'); m.put({ v: 1, salt: L.fromB64(v.salt), iter: v.iter, check: { iv: L.fromB64(v.check.iv), ct: L.fromB64(v.check.ct) }, created: v.created || b.j.createdAt }, 'vault'); if (srow) m.put({ iv: L.fromB64(srow.iv), ct: L.fromB64(srow.ct) }, 'settings'); const rs = t.objectStore('records'), fs = t.objectStore('files'); for (const x of good) { rs.put({ id: x.row.id, iv: L.fromB64(x.row.iv), ct: L.fromB64(x.row.ct) }); const f = b.files.get(x.rec.source.fileId); fs.put({ id: x.rec.source.fileId, iv: f.iv, ct: f.ct }); } const ds = t.objectStore('drafts'); for (const d of b.drafts) ds.put(d); });
+      key = b.k; S = { ...defaultSettings(), ...(b.settings || {}) }; R = good.map(x => x.rec); await loadDrafts(); unbusy(); enterApp();
       msg('Library restored', `<p>${R.length} record(s) restored with their original IDs, dates, links, and files. Use the same passphrase as the backup to unlock from now on.</p>`); return;
     }
     let added = 0, skipped = 0, demoted = 0; const newRecs = [], fileRows = [];
@@ -865,9 +994,12 @@ async function restoreBackup(file, welcome) {
     if (b.settings?.pkt && b.settings.pkt.year === S.pkt.year) S.pkt.next = Math.max(S.pkt.next, b.settings.pkt.next);
     S.srcNext = Math.max(S.srcNext || 1, b.settings?.srcNext || 1);
     const rows = await Promise.all(newRecs.map(async r => ({ id: r.uid, ...await seal(r) }))); const srow = await seal(S);
-    await tx(['records', 'files', 'meta'], 'readwrite', t => { fileRows.forEach(f => t.objectStore('files').put(f)); rows.forEach(r => t.objectStore('records').put(r)); t.objectStore('meta').put(srow, 'settings'); });
-    R.push(...newRecs); unbusy(); renderAll();
-    msg('Restore finished', `<p>${added} record(s) added, ${skipped} already in this library (skipped — nothing was overwritten).${demoted ? ` ${demoted} added as earlier versions because a current version already existed.` : ''}</p>`);
+    const draftRows = []; for (const d of b.drafts) { if (D.some(x => x.id === d.id)) continue; draftRows.push({ id: d.id, meta: await seal(await unseal(d.meta, b.k)), body: await seal(await unseal(d.body, b.k)) }); }
+    if (b.settings?.counters) { S.counters = { ...(S.counters || {}) }; for (const [k2, v2] of Object.entries(b.settings.counters)) S.counters[k2] = Math.max(Number(S.counters[k2]) || 1, Number(v2) || 1); }
+    const srow2 = await seal(S);
+    await tx(['records', 'files', 'meta', 'drafts'], 'readwrite', t => { fileRows.forEach(f => t.objectStore('files').put(f)); rows.forEach(r => t.objectStore('records').put(r)); t.objectStore('meta').put(srow2, 'settings'); draftRows.forEach(d => t.objectStore('drafts').put(d)); });
+    void srow; R.push(...newRecs); await loadDrafts(); unbusy(); renderAll();
+    msg('Restore finished', `<p>${added} record(s) added${draftRows.length ? `, ${draftRows.length} draft(s) added` : ''}, ${skipped} already in this library (skipped — nothing was overwritten).${demoted ? ` ${demoted} added as earlier versions because a current version already existed.` : ''}</p>`);
   } catch (e) { unbusy(); msg('Restore failed', `<p>${esc(e.message)}</p><p>Your library was not changed.</p>`); }
 }
 
@@ -880,11 +1012,12 @@ async function renderSettings() {
   const hist = [...(S.imports || [])].reverse().slice(0, 12);
   $('importHist').innerHTML = (hist.length ? hist.map(h => `<div>${esc(stamp(h.at))} — ${h.count} file(s)</div>`).join('') : 'No imports yet.') + ((S.packets || []).length ? `<p style="margin-top:10px"><b>Reports made:</b> ${S.packets.slice(-8).reverse().map(p => esc(p.id + ' (' + p.kind + ')')).join(', ')}</p>` : '');
 }
-const GUIDE = `<h3>1. Make a record</h3><p>Tap <b>Inky</b>. Choose what you're documenting (an incident, police contact, a phone call, a payment, a school or medical event, and so on). Fill in the starred items — usually just the date and a few taps. More details are optional. Add photos, screenshots, or receipts with <b>Attach evidence</b>.</p>
-<h3>2. Save it</h3><p>Tap <b>Save record</b>. It's encrypted and kept in your library with its own number (for example POLI004). You can also <b>Save &amp; download PDF</b> or <b>Save &amp; print</b> a copy of that one record. To correct a record, change the form and save again: it keeps the same number and becomes the next revision, and the earlier version is kept as history. Tap <b>Start a new record</b> when you're done.</p>
-<h3>3. Assemble a packet</h3><p>Open <b>Packets</b>, check the case and dates, then tap <b>Build packet</b>. Use the section and privacy controls to choose what appears. Preview the result before exporting a PDF or ZIP.</p>
-<h3>Library and timeline</h3><p>The <b>Library</b> shows everything saved, with search and filters, folders, a sortable index, and an evidence list. You can also import PDFs made on another device or by the older Inky app, plus any other files. <b>Ridion</b> shows two months at a time; tap a date or a record ID.</p>
-<h3>Backups</h3><p>Your library lives only on this device, encrypted with your passphrase. In <b>Settings</b>, use <b>Download encrypted backup</b>, then <b>Test a backup</b>. Keep two copies in different places. On a new device, choose <b>Restore from an encrypted backup</b> on the first screen. A forgotten passphrase can't be recovered.</p>
+const GUIDE = `<h3>1. Create</h3><p>From the <b>Dashboard</b>, choose a documentation form: Incident Report (INCD), Concerns Raised (CONC), Communication Log (COMM), Evidence Intake (EVID), Police Report (POL), or Parenting Exchange (EXCH). Other record types are on <b>Inky</b>. Fill in the starred items, attach evidence if you like, and link related records with <b>＋ Link a stored record</b>.</p>
+<h3>2. Save &amp; Send</h3><p><b>Save &amp; Send</b> checks the required fields, gives the record its number (for example INCD005), and stores it with its attachments in your encrypted Records Library in one step. You'll see “Record INCD005 saved successfully to the Records Library.” only after it is really stored. Pressing it twice never makes two copies. Save &amp; Send stores the record on this device only — it does not send anything to another person, server, attorney, or court.</p>
+<p><b>Save draft</b> keeps an unfinished entry, encrypted, without adding it to the Records Library or using a number. Drafts are listed on the Dashboard.</p>
+<h3>3. Store &amp; organize</h3><p>Stored records appear right away in the Records Library, the Ridion calendar and timeline, the master index, and the evidence index. Open a record to link it to others (links show on both records), mark it <b>Ready for Report</b>, or <b>Correct this record</b>: a correction keeps the same ID as a new revision, and the earlier version stays unchanged.</p>
+<h3>4. Generate a report</h3><p>Open <b>Reports</b>, check the dates and cases (or tick “Only records marked Ready for Report”), then tap <b>Generate Report</b>. Records that appear in a generated report show <b>Included in Report</b>. Reports never change or delete their source records.</p>
+<h3>Backups</h3><p>Your library lives only in this browser on this device. In <b>Settings</b>, use <b>Download encrypted backup</b>, then <b>Test a backup</b>. Backups include records, files, and drafts. Keep two copies in different places. A forgotten passphrase can't be recovered.</p>
 <h3>Good to know</h3><p>Reports and ZIP files are not encrypted, so check what's included before sharing. A report is an organizational summary — not a court-issued or certified document. Write only what you saw, heard, or were told, and say which. The direct PDF uses standard Western characters; use Print for other scripts or emoji.</p>`;
 const INSTALL = `<p><b>iPhone / iPad (Safari):</b> open the app's web address, tap the Share button, then <b>Add to Home Screen</b>.</p><p><b>Android (Chrome):</b> open the address, tap the ⋮ menu, then <b>Install app</b> or <b>Add to Home screen</b>.</p><p><b>Computer (Chrome or Edge):</b> click the install icon at the right end of the address bar.</p><p>After the first visit, the app opens and works without internet. Your library stays only in that browser on that device.</p>`;
 
@@ -899,6 +1032,13 @@ function wire() {
   document.querySelectorAll('.nav').forEach(b => b.addEventListener('click', () => b.classList.contains('run') ? runReportFromAnywhere() : go(b.dataset.view)));
   document.addEventListener('click', e => { const g = e.target.closest('[data-go]'); if (g) go(g.dataset.go); const im = e.target.closest('[data-import]'); if (im) $('importInput').click(); });
   $('lockBtn').addEventListener('click', lock); $('lockBtn2').addEventListener('click', lock);
+  $('v-dashboard').addEventListener('click', async e => {
+    const n = e.target.closest('[data-new]'); if (n) { go('record'); await window.Record?.startType(n.dataset.new); return; }
+    const od = e.target.closest('[data-draft-open]'); if (od) { try { await openDraft(od.dataset.draftOpen); } catch (err) { msg('Draft could not be opened', `<p>${esc(err.message)}</p>`); } return; }
+    const dd = e.target.closest('[data-draft-del]'); if (dd) { deleteDraft(dd.dataset.draftDel); return; }
+    if (e.target.closest('#dReport')) { runReportFromAnywhere(true); return; }
+    const o = e.target.closest('[data-open]'); if (o) openRecord(o.dataset.open);
+  });
   $('quickBackup').addEventListener('click', makeBackup);
   $('importInput').addEventListener('change', e => { stage(e.target.files); e.target.value = ''; });
   const drop = $('drop'); drop.addEventListener('click', () => $('importInput').click()); drop.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('importInput').click(); } });
@@ -922,7 +1062,7 @@ function wire() {
   $('clearDay').addEventListener('click', () => { dayFilter = ''; renderTimeline(); });
   $('printCal').addEventListener('click', printCalendar);
   $('pkRange').addEventListener('change', () => { const c = $('pkRange').value === 'custom'; $('pkFromW').classList.toggle('hidden', !c); $('pkToW').classList.toggle('hidden', !c); renderPacket(); });
-  ['pkFrom', 'pkTo', 'pkReview'].forEach(id => $(id).addEventListener('change', renderPacket));
+  ['pkFrom', 'pkTo', 'pkReview', 'pkReadyOnly'].forEach(id => $(id).addEventListener('change', renderPacket));
   ['pkNarr', 'pkFollow', 'pkKids', 'pkOriginals', 'pkOpacity', 'pkTitle'].forEach(id => $(id).addEventListener('input', updatePkSummary));
   document.querySelectorAll('[name=pkProfile]').forEach(r => r.addEventListener('change', updatePkSummary));
   $('v-packet').addEventListener('change', e => { const t = e.target; if (t.dataset.case != null) { t.checked ? pkCaseSel.add(t.dataset.case) : pkCaseSel.delete(t.dataset.case); renderPacket(); } else if (t.dataset.cat) { t.checked ? pkCatSel.add(t.dataset.cat) : pkCatSel.delete(t.dataset.cat); renderPacket(); } else if (t.dataset.pick) { t.checked ? pkExcluded.delete(t.dataset.pick) : pkExcluded.add(t.dataset.pick); updatePkSummary(); } else if (t.dataset.sec) { t.checked ? secOn.add(t.dataset.sec) : secOn.delete(t.dataset.sec); updatePkSummary(); } });
@@ -949,6 +1089,10 @@ function wire() {
   window.__vault = { get records() { return R; }, get settings() { return S; } };
   window.App = {
     toast, msg, busy, unbusy, saveBlob, inArtifact, go: v => go(v), runReport: runReportFromAnywhere,
+    saveDraft, possibleDuplicates, storageWarning,
+    recordExists: id => !!findCurrent(String(id || '').toUpperCase()),
+    linkTargets: () => current().filter(r => r.docId && !/^SRC-/.test(r.docId)).map(r => ({ id: r.docId, title: r.title })).sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true })),
+    openRecordById(id) { const r = findCurrent(id); if (r) openRecord(r.uid); else toast(`${id} isn't in the Records Library.`); },
     attachmentCode(hash) {return R.find(r=>r.kind==='file' && r.source?.sha256===hash)?.docId || ''},
     counters() {
       const next = { ...(S?.counters || {}) };

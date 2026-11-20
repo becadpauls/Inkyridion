@@ -45,23 +45,28 @@ const KEEP=new Set([...META,'narrative','observed','reported','quotes','outcome'
 const join=(...p)=>p.filter(Boolean).join(' — ');
 
 /* ---------- categories ---------- */
+/* The six documentation forms come first; other record types stay available below them. */
 const GROUPS=[
- {g:'INC',label:'Incident',icon:'📝',desc:'An event or concerning occurrence',leaf:'INC'},
- {g:'PAR',label:'Parenting Issue',icon:'🗓️',desc:'Schedule, parenting time, decisions',leaf:'PAR'},
- {g:'EVD',label:'Evidence',icon:'📎',desc:'Identify a photo, file, or item',leaf:'EVD'},
- {g:'PPD',label:'Police Contact',icon:'🚓',desc:'Calls, responses, reports',leaf:'PPD'},
- {g:'COMMS',label:'Communications',icon:'💬',desc:'Child contact and exchanges',subs:['KCT','EXC'],ask:'What kind of communication?'},
- {g:'FINS',label:'Financial',icon:'💵',desc:'Payments and money matters',subs:['FINPAY','FINMAT'],ask:'What are you recording?'},
- {g:'CRT',label:'Court / Legal',icon:'⚖️',desc:'Hearings, orders, filings',leaf:'CRT'},
- {g:'CARE',label:'Child & Care',icon:'🧸',desc:'Health, school, care, statements',subs:['MED','EDU','THR','ACT','WEL','OBS'],ask:'What is this about?'}
+ {g:'INC',label:'Incident Report',desc:'An event or concerning occurrence',leaf:'INC',core:1},
+ {g:'CONC',label:'Concerns Raised',desc:'A concern you raised, and any response',leaf:'CONC',core:1},
+ {g:'COMMS',label:'Communication Log',desc:'Calls, texts, emails, conversations',leaf:'KCT',core:1},
+ {g:'EVD',label:'Evidence Intake',desc:'Log a photo, file, recording, or item',leaf:'EVD',core:1},
+ {g:'PPD',label:'Police Report',desc:'Calls, responses, report numbers',leaf:'PPD',core:1},
+ {g:'EXCH',label:'Parenting Exchange',desc:'Pickups, drop-offs, handoffs',leaf:'EXC',core:1},
+ {g:'PAR',label:'Parenting Issue',desc:'Schedule, parenting time, decisions',leaf:'PAR'},
+ {g:'FINS',label:'Financial',desc:'Payments and money matters',subs:['FINPAY','FINMAT'],ask:'What are you recording?'},
+ {g:'CRT',label:'Court / Legal',desc:'Hearings, orders, filings',leaf:'CRT'},
+ {g:'CARE',label:'Child & Care',desc:'Health, school, care, statements',subs:['MED','EDU','THR','ACT','WEL','OBS'],ask:'What is this about?'}
 ];
-const PDFCOLOR={INC:'#a2455f',PAR:'#2f7f73',EVD:'#5c6875',PPD:'#b0573d',COMMS:'#3a6d9a',FINS:'#a8752c',CRT:'#3f4a7c',CARE:'#765a8f'};
+/* Form group -> color-guide group (see Lib.CAT). */
+const COLOR_GROUP={INC:'incident',CONC:'concerns',COMMS:'comms',EVD:'evidence',PPD:'police',EXCH:'parenting',PAR:'parenting',FINS:'finance',CRT:'court',CARE:'care'};
+const groupColor=g=>Lib.catColor(COLOR_GROUP[g]);
 const KCT_M=['Phone call','Video call','Text message','Messaging app','Email','In person','Attempted contact'];
 const KCT_H={'Phone call':'PHONE CALLS','Video call':'VIDEO CALLS','Text message':'TEXT MESSAGES','Messaging app':'MESSAGING APP','Email':'EMAIL','In person':'IN-PERSON CONTACT','Attempted contact':'ATTEMPTED CONTACT'};
 const withKids=(base,v)=>base+(v.children?` — ${v.children}`:'');
 
 const TYPES={
-INC:{prefix:'INCD',group:'INC',label:'Incident',heading:v=>(v.wording||'Event').toUpperCase(),seq:true,req:['date','narrative'],account:'Account of events',
+INC:{prefix:'INCD',group:'INC',label:'Incident Report',heading:v=>(v.wording||'Event').toUpperCase(),seq:true,req:['date','narrative'],account:'Account of events',
  ess:[ta('narrative','What happened?',{tall:1,ph:'Describe what you saw, heard, or were told.',pl:'Account of events'}),DATE('Date it happened'),TIME()],
  more:[T_TITLE,chips('incType','Type of incident',['Safety concern','Unwanted contact','Disagreement','Property damage','Other']),LOC(),PEOPLE(),QUOTES,f('witnesses','Witnesses','text',{ph:'Names'}),ta('effects','Injuries or damage',{rows:2,pl:'Observable effects'}),OUT('What happened afterward?'),FOLLOW,...tail('title')],
  auto:v=>v.incType||String(v.narrative||'Incident').trim().split(/\s+/).slice(0,9).join(' ')},
@@ -71,7 +76,15 @@ PAR:{prefix:'PAR',group:'PAR',label:'Parenting Issue',heading:()=>'PARENTING ISS
  more:[TIME(),chips('arrSource','Where does the arrangement come from?',['Court order','Written agreement','Parenting app message','Verbal agreement','Other'],{pl:'Source of arrangement'}),
   QUOTES,OUT(),FOLLOW,...tail()],
  auto:v=>withKids(v.parType||'Parenting issue',v)},
-KCT:{prefix:'COMM',group:'COMMS',label:'Communication',sub:'Calls, texts, emails, or conversations',icon:'📱',req:['date'],account:'Communication',
+CONC:{prefix:'CONC',group:'CONC',label:'Concerns Raised',heading:()=>'CONCERNS RAISED',req:['date','narrative','raisedWith'],account:'Concern raised',
+ ess:[chips('concArea','What is the concern about?',['Child safety','Child health','Schooling','Parenting time','Communication','Supervision','Other'],{pl:'Area of concern'}),
+  ta('narrative','What concern did you raise?',{tall:1,ph:'Describe the concern as you raised it.',pl:'Concern raised'}),
+  DATE('Date raised'),f('raisedWith','Raised with','text',{ph:'Person, role, or agency, e.g. school counselor'}),
+  chips('raisedHow','How was it raised?',['In person','Phone call','Text message','Email','Parenting app','Letter','Through an attorney','Other'],{pl:'How it was raised'})],
+ more:[TIME(),CHILD,chips('concStatus','Response so far',['No response yet','Acknowledged','Action taken','Declined','Disputed','Resolved'],{pl:'Response status'}),
+  ta('response','What response was given?',{rows:2,pl:'Response received'}),QUOTES,FOLLOW,...tail()],
+ auto:v=>join('Concern raised'+(v.concArea?': '+v.concArea.toLowerCase():''),v.raisedWith&&('with '+v.raisedWith))},
+KCT:{prefix:'COMM',group:'COMMS',label:'Communication Log',sub:'Calls, texts, emails, or conversations',icon:'📱',req:['date'],account:'Communication',
  heading:v=>'COMMUNICATIONS / '+(KCT_H[v.method]||'CONTACT'),
  ess:[chips('method','How was the contact made?',KCT_M,{pl:'Communication method'}),chips('status','Did the contact go through?',['Completed','Attempted','No answer','Interrupted','Declined','Other'],{pl:'Contact status'}),
   DATE(),TIME(),CHILD,
@@ -79,24 +92,24 @@ KCT:{prefix:'COMM',group:'COMMS',label:'Communication',sub:'Calls, texts, emails
   ta('narrative','What was said or sent?',{rows:2,ph:'A short summary is fine.',pl:'Summary of what was communicated'})],
  more:[PEOPLE(),f('initiator','Who started the contact?'),QUOTES,FOLLOW,...tail()],
  auto:v=>(v.method||'Communication')+(v.children?` with ${v.children}`:'')+(v.status&&v.status!=='Completed'?` (${v.status.toLowerCase()})`:'')},
-EXC:{prefix:'EXC',group:'COMMS',label:'Parenting Exchange',sub:'Pickups, drop-offs, handoffs',icon:'🚗',req:['date'],account:'Exchange account',
- heading:()=>'COMMUNICATIONS / PARENTING EXCHANGE',
+EXC:{prefix:'EXCH',group:'EXCH',label:'Parenting Exchange',sub:'Pickups, drop-offs, handoffs',icon:'🚗',req:['date'],account:'Exchange account',
+ heading:()=>'PARENTING EXCHANGE',
  ess:[chips('excType','Type of exchange',['Pickup','Drop-off','Handoff','Other']),
   chips('excStatus','How did it go?',['Completed','Delayed','Changed by agreement','Attempted','Did not occur','Disputed'],{pl:'Exchange status'}),
   DATE(),f('schedTime','Scheduled time','time'),f('actualTime','Actual time','time'),LOC('Exchange location'),CHILD],
  more:[f('present','Who was there?','text',{ph:'Names'}),ta('narrative','Notes',{rows:2,ph:'Only if something differed from what was expected.',pl:'Notes'}),QUOTES,FOLLOW,...tail()],
  auto:v=>join(v.excType||'Parenting exchange',v.excStatus)},
-PPD:{prefix:'POLI',group:'PPD',label:'Police Contact',heading:()=>'POLICE INTERACTION',req:['date','narrative'],account:'Account of the interaction',
+PPD:{prefix:'POL',group:'PPD',label:'Police Report',heading:()=>'POLICE REPORT',req:['date','narrative'],account:'Account of the interaction',
  ess:[DATE(),TIME('Time police were contacted'),
   chips('contactMethod','How were police contacted?',['911','Non-emergency dispatch','Officer at scene','Station visit','Written or online request','Other'],{pl:'How police were contacted'}),
   ta('narrative','What happened?',{ph:'Why police were contacted, what was said, and what officers did.',pl:'Summary of the interaction'}),
-  f('reportNo','Police report number','text',{ph:'If you were given one',hint:'The official number from the agency. This document\'s own code (POLI…) is separate.'})],
+  f('reportNo','Police report number','text',{ph:'If you were given one',hint:'The official number from the agency. This document\'s own code (POL…) is separate.'})],
  more:[LOC(),f('agency','Police department or agency','text',{ph:'e.g. Pueblo Police Department'}),f('officers','Officers and badge numbers'),
   f('arrivalTime','Time officers arrived','time'),f('cadNo','CAD or dispatch number'),
   ta('outcome','Outcome',{rows:2,hint:'Only what officers actually said or did — e.g. "No report taken."',pl:'Outcome / disposition'}),
   chips('recordsReq','Records request',['Not requested','Requested','Received','Denied']),FOLLOW,...tail()],
- auto:v=>join('Police contact',v.contactMethod)},
-EVD:{prefix:'EVID',group:'EVD',label:'Evidence',heading:()=>'EVIDENCE',req:['date','narrative'],account:'Evidence description',files:'evidence',
+ auto:v=>join('Police report',v.contactMethod)},
+EVD:{prefix:'EVID',group:'EVD',label:'Evidence Intake',heading:()=>'EVIDENCE INTAKE',req:['date','narrative'],account:'Evidence description',files:'evidence',
  ess:[chips('evType','Type of evidence',['Photograph','Screenshot','Audio','Video','PDF','Written document','Message export','Receipt','Physical evidence reference','Other']),
   ta('narrative','Describe the evidence',{rows:2,ph:'What it is and what it shows.',pl:'Description'}),
   chips('evStatus','Preservation status',['Preserved, confirmed','Received, awaiting verification','Held by another person or agency','Requested, not yet received','Existence unconfirmed']),
@@ -163,18 +176,22 @@ FINMAT:{prefix:'FIN',group:'FINS',label:'Financial Matter',sub:'A request, propo
  more:[WORDING,f('participants','Other participants'),T_CASE,T_REL]}
 };
 const GROUP_OF=k=>TYPES[k]?.group;
-const PREFIX_NAMES={INCD:'Incident',PAR:'Parenting Issue',EVID:'Evidence',POLI:'Police Contact',COMM:'Communication',EXC:'Parenting Exchange',FIN:'Financial',RCP:'Receipts (RCP)',CRT:'Court / Legal',MED:'Medical & Health',EDU:'Education',THR:'Therapy & Counseling',ACT:'Activities',WEL:'Daily Care',OBS:'Child Statements',COM:'Communications (older code)',CHD:'Child & Care (older code)'};
+const PREFIX_NAMES={INCD:'Incident Report',CONC:'Concerns Raised',COMM:'Communication Log',EVID:'Evidence Intake',POL:'Police Report',EXCH:'Parenting Exchange',PAR:'Parenting Issue',POLI:'Police Contact (older POLI code)',EXC:'Parenting Exchange (older EXC code)',FIN:'Financial',RCP:'Receipts (RCP)',CRT:'Court / Legal',MED:'Medical & Health',EDU:'Education',THR:'Therapy & Counseling',ACT:'Activities',WEL:'Daily Care',OBS:'Child Statements',COM:'Communications (older code)',CHD:'Child & Care (older code)'};
 const PREFIXES=Object.keys(PREFIX_NAMES);
 
 /* ---------- counters (only thing stored) ---------- */
 let storageOK=true;
 let counters=Object.fromEntries(PREFIXES.map(p=>[p,1]));
-function syncCounters(){const c=window.App&&App.counters?App.counters():{};for(const p of PREFIXES)counters[p]=Math.max(counters[p]||1,Number(c[p])||1)}
+/* POL and EXCH continue from the older POLI and EXC sequences so numbers keep rising. */
+function syncCounters(){const c=window.App&&App.counters?App.counters():{};for(const p of PREFIXES)counters[p]=Math.max(counters[p]||1,Number(c[p])||1);counters.POL=Math.max(counters.POL,counters.POLI);counters.EXCH=Math.max(counters.EXCH,counters.EXC)}
 function persist(){if(window.App&&App.saveCounters)App.saveCounters({...counters})}
 const code=p=>p+pad(counters[p]);
 
 /* ---------- state (memory only) ---------- */
 let typeKey=null, activeGroup=null, vals={}, files=[], moments=[], doc=null, touched=false, entryStarted=null, uid=0;
+/* One submission ID per Save & Send operation: a retry reuses it, so a record is never stored twice. */
+const newSub=()=>(crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+'-'+[...crypto.getRandomValues(new Uint8Array(10))].map(b=>b.toString(16).padStart(2,'0')).join(''));
+let submission=newSub(), draftId=null, draftFp=null;
 const whenList=[];
 function markStarted(){touched=true;if(!entryStarted)entryStarted=new Date().toISOString();refreshSteps()}
 const T=()=>TYPES[typeKey];
@@ -184,8 +201,10 @@ const dirty=()=>touched||files.length>0||moments.some(m=>m.detail.trim());
 
 /* ---------- category UI ---------- */
 function renderCards(){const box=$('cards');box.innerHTML='';
- for(const G of GROUPS){box.append(h('button',{type:'button',class:'card','data-g':G.g,'aria-pressed':String(activeGroup===G.g),onclick:()=>pickGroup(G)},
-  h('span',{class:'badge'},'✓ Selected'),h('span',{class:'ico','aria-hidden':'true'},G.leaf?TYPES[G.leaf].prefix:G.label.slice(0,3).toUpperCase()),h('span',{class:'lbl'},G.label),h('span',{class:'desc'},G.desc)))}
+ box.append(h('div',{class:'cards-sep'},'Documentation forms'));
+ GROUPS.forEach((G,i)=>{if(!G.core&&GROUPS[i-1]?.core)box.append(h('div',{class:'cards-sep'},'More record types'));
+  box.append(h('button',{type:'button',class:'card','data-g':G.g,'aria-pressed':String(activeGroup===G.g),onclick:()=>pickGroup(G)},
+  h('span',{class:'badge'},'✓ Selected'),h('span',{class:'ico','aria-hidden':'true'},G.leaf?TYPES[G.leaf].prefix:G.label.slice(0,3).toUpperCase()),h('span',{class:'lbl'},G.label),h('span',{class:'desc'},G.desc)))});
  const G=GROUPS.find(x=>x.g===activeGroup);
  if(G&&G.subs){$('subs').classList.remove('hidden');$('subs').dataset.g=G.g;$('subsTitle').textContent=G.ask;const sg=$('subgrid');sg.innerHTML='';
   for(const k of G.subs){const t=TYPES[k];sg.append(h('button',{type:'button',class:'sub','aria-pressed':String(typeKey===k),onclick:()=>selectType(k)},
@@ -242,6 +261,13 @@ function fieldEl(fd,inMore){
   if(isReq)el.setAttribute('aria-required','true');
   el.addEventListener('input',()=>{vals[fd.k]=el.value;clearErr(fd.k);markStarted();if(inMore)updateMoreHint()});
   wrap.append(el);
+  if(fd.k==='related'){
+   const pick=h('select',{class:'relpick','aria-label':'Link a record already in the Records Library'});
+   const fill=()=>{const opts=window.App?.linkTargets?.()||[];const selfId=doc?doc.id:'';pick.innerHTML='';pick.append(h('option',{value:''},opts.length?'＋ Link a stored record…':'No stored records to link yet'));for(const o of opts)if(o.id!==selfId)pick.append(h('option',{value:o.id},`${o.id} — ${o.title}`))};
+   fill();pick.addEventListener('focus',fill);
+   pick.addEventListener('change',()=>{const id=pick.value;if(!id)return;const cur=relList();if(!cur.includes(id))cur.push(id);vals.related=cur.join(', ');el.value=vals.related;pick.value='';clearErr('related');markStarted();if(inMore)updateMoreHint()});
+   wrap.append(pick);
+  }
  }
  if(fd.hint)wrap.append(h('div',{class:'hint',id:hintId},fd.hint));
  wrap.append(h('div',{class:'err',id:errId,'aria-live':'polite'}));
@@ -298,7 +324,7 @@ function renderFiles(){
  files.forEach((it,i)=>{
   const ref=it.ref||p.refs.get(it.uid);
   host.append(h('div',{class:'fileitem'},h('div',{},
-   h('span',{class:'ref'},it.ref?ref:`${ref} · assigned when you create the document`),
+   h('span',{class:'ref'},it.stored?`${ref} · already in the Records Library`:it.ref?ref:`${ref} · assigned when you Save & Send`),
    h('div',{class:'nm'},it.name),h('div',{class:'meta'},`${fmtSize(it.size)} · ${it.type}`),
    h('div',{class:'meta'},it.hash?['SHA-256: ',h('code',{},it.hash)]:it.note)),
    h('button',{type:'button',class:'btn small','aria-label':'Remove '+it.name,onclick:()=>{files.splice(i,1);renderFiles();updateStatus()}},'Remove')));
@@ -344,14 +370,14 @@ function collect(p,output){
  const fileRows=files.map(it=>({ref:p.refs.get(it.uid),role:t.fin?'receipt':'evidence',name:it.name,size:it.size,mime:it.type,lastModified:it.lastModified,sha256:it.hash||null,hashNote:it.hash?'':it.note,originalIncluded:false}));
  const title=g('title')||(t.auto?t.auto(vals):'')||t.label;
  return {
-  id:p.id,prefix:t.prefix,number:Number(p.id.replace(/^\D+/,'')),typeKey,category:GROUPS.find(G=>G.g===t.group).label,subcategory:t.label,heading:typeKey==='INC'?(vals.wording||'Event').toUpperCase():t.heading(vals),
+  id:p.id,prefix:p.id.replace(/\d+$/,''),number:Number(p.id.replace(/^\D+/,'')),typeKey,category:GROUPS.find(G=>G.g===t.group).label,subcategory:t.label,heading:typeKey==='INC'?(vals.wording||'Event').toUpperCase():t.heading(vals),
   title,titleAutomatic:!g('title'),eventDate:v('date'),eventTime,timeAccuracy,timeZone:TZ,
   entryStarted:entryStarted||new Date().toISOString(),generatedAt:new Date().toISOString(),revision:p.revision,isNew:p.isNew,output,
   preparedBy:g('reporter'),basis:g('basis'),location:g('location'),
   people:g('people').split(/\n+/).map(s=>s.trim()).filter(Boolean),children:g('children').split(/,|\band\b|&/).map(s=>s.trim()).filter(Boolean),
   peopleText:g('people'),childrenText:g('children'),
   caseRefs:caseNums.map(n=>({caseNumber:n,proceeding})),caseType:proceeding,
-  relatedIds:g('related').split(/[,;\s]+/).map(s=>s.trim().toUpperCase()).filter(Boolean),
+  relatedIds:shown.has('related')?relList().filter(x=>x!==p.id):[],
   fields,narrative,sequence:t.seq?moments.filter(m=>m.detail.trim()||m.when.trim()).map(m=>({when:m.when.trim(),description:m.detail.trim(),basis:m.basis})):[],
   files:fileRows,receiptRefs:t.fin?fileRows.map(x=>x.ref):[],evidenceRefs:t.fin?[]:fileRows.map(x=>x.ref),
   financial:t.fin?{kind:t.fin==='pay'?'payment':'matter',amount:v('amount')===''?null:Number(v('amount')),amountText:v('amount'),paidBy:g('paidBy'),paidTo:g('paidTo'),category:g('payCat'),status:g('payStatus')||g('matStatus'),method:g('payMethod'),merchantReceiptNumber:g('txn'),raisedBy:g('raisedBy'),participants:g('participants')}:null
@@ -362,7 +388,7 @@ function manifest(rec){const r={...rec};delete r.isNew;delete r.peopleText;delet
 /* ---------- document model (shared by preview, print, PDF) ---------- */
 function daysBetween(a,b){const x=parseD(a),y=new Date(b);if(!x)return null;const yy=new Date(y.getFullYear(),y.getMonth(),y.getDate());return Math.round((yy-x)/86400000)}
 function buildModel(rec,mode){
- const t=TYPES[rec.typeKey];const term=Lib.recordTerm(rec);const m={accent:PDFCOLOR[t.group],kicker:'DOCUMENTATION / '+monthYear(rec.eventDate),heading:rec.heading,title:rec.title,id:rec.id,revision:rec.revision,mode,sections:[],notes:[],banner:null};
+ const t=TYPES[rec.typeKey];const term=Lib.recordTerm(rec);const gc=groupColor(t.group);const m={accent:gc.ink,fill:gc.color,colorName:gc.name,kicker:'DOCUMENTATION / '+monthYear(rec.eventDate),heading:rec.heading,title:rec.title,id:rec.id,revision:rec.revision,mode,sections:[],notes:[],banner:null};
  const idShown=mode==='preview'&&rec.isNew?`${rec.id} (next available — assigned when you download or print)`:rec.id;
  m.idLine=`Document ID ${mode==='preview'&&rec.isNew?rec.id+' (not yet assigned)':rec.id}  ·  Revision ${rec.revision}`;
  const revText=rec.revision===1?'1 (original)':`${rec.revision} (corrected version — earlier revisions are unchanged)`;
@@ -400,7 +426,7 @@ function buildModel(rec,mode){
  return m;
 }
 function paperHtml(m){
- let o=`<div class="rpaper" style="--pa:${m.accent}"><div class="kick"><span>${esc(m.kicker)}</span><span>${esc(m.mode==='preview'&&m.banner?'PREVIEW':m.id)}</span></div>`;
+ let o=`<div class="rpaper" style="--pa:${m.accent};--pf:${m.fill}"><div class="docband"><img src="assets/logo.webp" alt="Inkyridion" class="doclogo"><div class="kick"><span>${esc(m.kicker)}</span><span>${esc(m.mode==='preview'&&m.banner?'PREVIEW':m.id)}</span></div></div>`;
  o+=`<div class="hd">${esc(m.heading)}</div><h1>${esc(m.title)}</h1><div class="idl">${esc(m.idLine)}</div>`;
  if(m.banner)o+=`<div class="pv">${m.banner}</div>`;
  for(const s of m.sections){
@@ -423,9 +449,10 @@ const WX={128:556,130:222,131:556,132:333,133:1000,134:556,135:556,136:333,137:1
 function winBytes(s,bad){const out=[];for(const ch of String(s).normalize('NFC')){const c=ch.codePointAt(0);if(c===9){out.push(32,32,32,32);continue}if(c===10||c===13)continue;if(c>=32&&c<=126||c>=160&&c<=255)out.push(c);else if(WIN[c])out.push(WIN[c]);else{if(bad&&!/[​-‍️]/.test(ch))bad.add(ch);if(!/[​-‍️]/.test(ch))out.push(63)}}return out}
 function unsupportedIn(strs){const bad=new Set();for(const s of strs)winBytes(s,bad);return [...bad]}
 function makePdf(m,rec){
- const W=612,H=792,ML=54,MR=558,CW=MR-ML,TOP=58,BOT=60;
+ const W=612,H=792,ML=54,MR=558,CW=MR-ML,TOP=68,BOT=60;
  const hex=x=>[1,3,5].map(i=>(parseInt(x.slice(i,i+2),16)/255).toFixed(3)).join(' ');
- const ACC=hex(m.accent),NAVY='0.122 0.176 0.302',INK='0.110 0.137 0.200',SLATE='0.310 0.353 0.427',LIGHT='0.949 0.957 0.969',RULE='0.851 0.871 0.902';
+ const D=Lib.DOC,ACC=hex(m.accent),FILL=hex(m.fill||m.accent),NAVY=hex(D.head),INK=hex(D.ink),SLATE=hex(D.label),LIGHT=hex(D.light),RULE=hex(D.rule),BANDC=hex(D.band),GRID=hex(D.grid);
+ const LG=Lib.logo();let usedLogo=false;
  const bad=new Set();
  const tw=(s,size,bold)=>{let u=0;const tab=bold?HB:HN;for(const b of winBytes(s)){u+=b>=32&&b<=126?tab[b-32]:(WX[b]||(b>=192&&b<=222?722:bold?611:556))}return u*size/1000};
  const lit=s=>winBytes(s,bad).map(b=>b===40||b===41||b===92?'\\'+String.fromCharCode(b):b<128?String.fromCharCode(b):'\\'+b.toString(8).padStart(3,'0')).join('');
@@ -434,10 +461,12 @@ function makePdf(m,rec){
  const txt=(s,x,base,size,bold,col)=>ops.push(`BT /F${bold?2:1} ${size} Tf ${col} rg ${x.toFixed(2)} ${(H-base).toFixed(2)} Td (${lit(s)}) Tj ET`);
  const rect=(x,top,w,hh,col)=>ops.push(`${col} rg ${x.toFixed(2)} ${(H-top-hh).toFixed(2)} ${w.toFixed(2)} ${hh.toFixed(2)} re f`);
  const rule=(top,col=RULE,x1=ML,x2=MR)=>ops.push(`${col} RG 0.6 w ${x1} ${(H-top).toFixed(2)} m ${x2} ${(H-top).toFixed(2)} l S`);
- function newPage(){if(ops.length)pages.push(ops);ops=[];rect(0,0,W,6,ACC);txt(m.kicker,ML,30,8,true,ACC);txt(m.id,MR-tw(m.id,9,true),30,9,true,NAVY);rule(40);y=TOP}
+ function newPage(){if(ops.length)pages.push(ops);ops=[];rect(0,0,W,50,BANDC);rect(0,0,W,5,FILL);rect(0,48.8,W,1.2,GRID);let lx=ML;
+  if(LG){const hh=36,ww=hh*LG.w/LG.h;ops.push(`q ${ww.toFixed(2)} 0 0 ${hh} ${ML-4} ${H-9-hh} cm /Im1 Do Q`);usedLogo=true;lx+=ww+4}
+  txt(m.kicker,lx,31,8,true,ACC);txt(m.id,MR-tw(m.id,9,true),31,9,true,NAVY);y=TOP}
  const room=()=>H-BOT-y;
  function ensure(hh){if(hh>room())newPage()}
- function sectionHead(title){ensure(70);y+=12;rect(ML,y,3,13,ACC);txt(title.toUpperCase(),ML+10,y+10.5,9.5,true,NAVY);y+=20;rule(y);y+=2}
+ function sectionHead(title){ensure(70);y+=12;rect(ML,y,4,13,FILL);txt(title.toUpperCase(),ML+10,y+10.5,9.5,true,NAVY);y+=20;rule(y);y+=2}
  function kv(label,value){
   const LW=158;const L=wrap(label,LW-16,8.8,true);let V=wrap(value,CW-LW-16,10.5,false);let first=true;
   while(V.length){let n=Math.floor((room()-12)/14.5);if(n<Math.min(2,V.length)){newPage();continue}
@@ -453,8 +482,8 @@ function makePdf(m,rec){
   const ws=cols.map(c=>c.w*CW);
   const head=()=>{const HL=cols.map((c,i)=>wrap(c.h,ws[i]-12,8.8,true));const hh=Math.max(...HL.map(l=>l.length))*11+10;ensure(hh+30);rect(ML,y,CW,hh,NAVY);let x=ML;HL.forEach((ls,i)=>{ls.forEach((s,j)=>txt(s,x+6,y+13+j*11,8.8,true,'1 1 1'));x+=ws[i]});y+=hh};
   head();
-  for(const r of rows){const CL=r.map((c,i)=>wrap(String(c??''),ws[i]-12,9.5,false));const hh=Math.max(...CL.map(l=>l.length))*13+10;if(hh>room()){newPage();head()}
-   let x=ML;CL.forEach((ls,i)=>{ls.forEach((s,j)=>{if(s)txt(s,x+6,y+14+j*13,9.5,false,INK)});x+=ws[i]});y+=hh;rule(y)}
+  rows.forEach((r,ri)=>{const CL=r.map((c,i)=>wrap(String(c??''),ws[i]-12,9.5,false));const hh=Math.max(...CL.map(l=>l.length))*13+10;if(hh>room()){newPage();head()}
+   if(ri%2)rect(ML,y,CW,hh,hex(D.zebra));let x=ML;CL.forEach((ls,i)=>{ls.forEach((s,j)=>{if(s)txt(s,x+6,y+14+j*13,9.5,false,INK)});x+=ws[i]});y+=hh;rule(y)});
  }
  newPage();
  txt(m.heading,ML,y+10,10,true,ACC);y+=18;
@@ -481,10 +510,10 @@ function makePdf(m,rec){
  const objs=[null,null,null];const add=s=>{objs.push(s);return objs.length-1};
  const F1=add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>');
  const F2=add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>');
- const kids=[];
- pages.forEach((pg,i)=>{const foot=[`BT /F1 7.8 Tf ${SLATE} rg ${ML} 30 Td (${lit(m.id+'  ·  Revision '+m.revision)}) Tj ET`,`BT /F1 7.8 Tf ${SLATE} rg ${(MR-tw(`Page ${i+1} of ${pages.length}`,7.8,false)).toFixed(2)} 30 Td (${lit(`Page ${i+1} of ${pages.length}`)}) Tj ET`];
+ const kids=[];const IM=usedLogo?add(LG.obj):0;const xres=IM?` /XObject << /Im1 ${IM} 0 R >>`:'';
+ pages.forEach((pg,i)=>{const foot=[`${RULE} RG 0.6 w ${ML} 44 m ${MR} 44 l S`,`BT /F1 7.8 Tf ${SLATE} rg ${ML} 30 Td (${lit(m.id+'  ·  Revision '+m.revision)}) Tj ET`,`BT /F1 7.8 Tf ${SLATE} rg ${(MR-tw(`Page ${i+1} of ${pages.length}`,7.8,false)).toFixed(2)} 30 Td (${lit(`Page ${i+1} of ${pages.length}`)}) Tj ET`];
   const stream=pg.concat(foot).join('\n');const sid=add(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`);
-  kids.push(add(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${W} ${H}] /Resources << /Font << /F1 ${F1} 0 R /F2 ${F2} 0 R >> >> /Contents ${sid} 0 R >>`))});
+  kids.push(add(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${W} ${H}] /Resources << /Font << /F1 ${F1} 0 R /F2 ${F2} 0 R >>${xres} >> /Contents ${sid} 0 R >>`))});
  const fname=`${rec.id}-record.json`;
  const ef=add(`<< /Type /EmbeddedFile /Subtype /application#2Fjson /Length ${jbin.length} /Params << /Size ${jb.length} /ModDate (${pdfDate}) >> >>\nstream\n${jbin}\nendstream`);
  const fs=add(`<< /Type /Filespec /F (${fname}) /UF ${u16(fname)} /Desc (Structured record data, schema documentation-record v2) /AFRelationship /Data /EF << /F ${ef} 0 R /UF ${ef} 0 R >> >>`);
@@ -501,8 +530,12 @@ function makePdf(m,rec){
 
 /* ---------- validation ---------- */
 function clearErr(k){const w=document.querySelector(`.field[data-k="${k}"]`);if(w){w.removeAttribute('aria-invalid');const e=w.querySelector('.err');if(e)e.textContent=''}}
+const relList=()=>[...new Set(String(vals.related||'').split(/[,;\s]+/).map(s=>s.trim().toUpperCase()).filter(Boolean))];
 function problems(){
  const t=T();const vis=visibleFields();const out=[];
+ if(vis.some(x=>x.k==='related')){const ids=relList();const selfId=doc?doc.id:code(t.prefix);
+  if(ids.includes(selfId))out.push({k:'related',msg:`A record can't be linked to itself (${selfId}).`,label:'Related record IDs'});
+  else{const missing=ids.filter(id=>!(window.App?.recordExists?.(id)));if(missing.length)out.push({k:'related',msg:`Not in your Records Library: ${missing.join(', ')}. Check the ID, or save that record first.`,label:'Related record IDs'})}}
  for(const k of t.req){const fd=vis.find(x=>x.k===k);if(fd&&!String(vals[k]||'').trim())out.push({k,msg:fd.t==='chips'?'Please choose one.':'Please fill this in.',label:fd.l})}
  if(t.check){const k=t.check(vals);if(k){const fd=vis.find(x=>x.k===k);out.push({k,msg:'Please fill this in.',label:fd?fd.l:k})}}
  if(vals.amount&&!/^\d{1,9}(\.\d{1,2})?$/.test(String(vals.amount).replace(/[$,\s]/g,'')))out.push({k:'amount',msg:'Use numbers only, like 125.50',label:'Amount'});
@@ -531,29 +564,57 @@ function ask(title,text,okLabel='Continue'){return new Promise(res=>{const d=$('
  d.addEventListener('close',()=>res(done),{once:true});info(title,'<p>'+esc(text).replace(/\n/g,'<br>')+'</p>',true)})}
 const pdfName=rec=>`${rec.id}${rec.revision>1?'_rev'+rec.revision:''}_${rec.eventDate}_${slug(rec.title)}.pdf`;
 let saving=false;
+const ACTION_IDS=['btnSave','btnDraft','btnDownload','btnPrint','pvDownload'];
+function lockButtons(on){for(const id of ACTION_IDS){const b=$(id);if(b){b.disabled=on;b.setAttribute('aria-busy',String(on))}}$('btnSave').textContent=on?'Saving…':'Save & Send'}
+function nextCounters(p){const c={EVID:p.evidenceNext,RCP:p.rcpNext};if(p.isNew)c[p.prefix]=Math.max(Number(c[p.prefix])||1,Number(p.id.replace(/^\D+/,''))+1);return c}
+const fileList=()=>files.map(it=>({file:it.stored?null:it.file,name:it.name,size:it.size,type:it.type,lastModified:it.lastModified,hash:it.hash,ref:it.ref||null,stored:!!it.stored}));
+/* Save & Send: validate, number, store in one transaction, then confirm. Internal storage only — nothing is sent anywhere. */
 async function saveRecord(mode){
  if(saving)return false; if(!validate())return false;
- if(files.some(it=>it.pending)){await Promise.all(files.map(it=>it.pending));if(saving)return false}
- const p=plan();const changed=!doc||p.fp!==doc.fp;const rec=collect(p,'direct-pdf');let blob=null,bad=null;
- try{blob=makePdf(buildModel(rec,'pdf'),rec)}catch(e){if(e.unsupported)bad=e.unsupported;else{console.error(e);tell('Not saved','The record could not be made: '+e.message+'\nNothing was numbered.');return false}}
- if(bad&&mode==='pdf'){$('ucChars').textContent=bad.join('  ');$('dlgUnicode').showModal();return false}
- saving=true;
+ saving=true;lockButtons(true);
  try{
+  if(files.some(it=>it.pending))await Promise.all(files.map(it=>it.pending));
+  const p=plan();const changed=!doc||p.fp!==doc.fp;const rec=collect(p,'direct-pdf');let blob=null,bad=null;
+  try{blob=makePdf(buildModel(rec,'pdf'),rec)}catch(e){if(e.unsupported)bad=e.unsupported;else throw new Error('The record could not be prepared ('+e.message+'). Nothing was stored or numbered.')}
+  if(bad&&mode==='pdf'){$('ucChars').textContent=bad.join('  ');$('dlgUnicode').showModal();return false}
+  if(changed&&p.isNew){
+   const d=App.possibleDuplicates({prefix:p.prefix,eventDate:rec.eventDate,eventTime:rec.eventTime,title:rec.title,narrative:(rec.narrative[0]||{}).value||'',files:files.filter(x=>x.hash&&!x.stored).map(x=>({name:x.name,hash:x.hash}))});
+   if(d.length&&!(await ask('Possible duplicate',`Please check before saving:\n\n${d.map(x=>'• '+x).join('\n')}\n\nDifferent events can look alike, so nothing is removed automatically. Save this as a new record?`,'Save as a new record'))){
+    setStatus('warn','Not saved yet. Your entry is unchanged. Check the possible duplicate, then tap <b>Save &amp; Send</b> again if this is a separate record.');return false}
+  }
+  let docId=rec.id;
   if(changed){
    const man=manifest(rec).record;
    const bytes=blob?new Uint8Array(await blob.arrayBuffer()):new TextEncoder().encode(JSON.stringify(manifest(rec),null,2));
-   await App.saveCreated({bytes,name:blob?pdfName(rec):`${rec.id}${rec.revision>1?'_rev'+rec.revision:''}-record.json`,mime:blob?'application/pdf':'application/json',noPdf:!blob,manifest:man,
-     files:files.map(it=>({file:it.file,name:it.name,size:it.size,type:it.type,lastModified:it.lastModified,hash:it.hash,ref:p.refs.get(it.uid)}))});
-   commit(p,mode);
+   const res=await App.saveCreated({bytes,name:blob?pdfName(rec):`${rec.id}${rec.revision>1?'_rev'+rec.revision:''}-record.json`,mime:blob?'application/pdf':'application/json',noPdf:!blob,manifest:man,typeKey,
+     submissionId:submission,draftId,counters:nextCounters(p),files:files.map(it=>({file:it.stored?null:it.file,name:it.name,size:it.size,type:it.type,lastModified:it.lastModified,hash:it.hash,ref:p.refs.get(it.uid)}))});
+   docId=res.docId;commit(p,mode);submission=newSub();draftId=null;draftFp=null;
   }
-  const savedLine=`<b>${rec.id}${rec.revision>1?` (revision ${rec.revision})`:''} is saved in your library.</b>`;
-  if(mode==='pdf'){const ok=await saveBlob(blob,pdfName(rec));setStatus('ok',savedLine+(ok?' A PDF copy was offered for download — check your Downloads or Files app.':' The download was cancelled; the record is still saved.'))}
-  else if(mode==='print'){if(inArtifact()){setStatus('warn',savedLine+' Printing is blocked inside this Claude view — use Download PDF, then print the PDF.')}else{$('printRoot').innerHTML=paperHtml(buildModel(rec,'print'));setStatus('ok',savedLine+' The print screen is open.');setTimeout(()=>window.print(),80)}}
-  else setStatus('ok',savedLine+(bad?' (Saved as record data only — some characters can\'t go in a PDF. Use Print for a paper copy.)':'')+' Make a correction any time: change the form and save again — it keeps the same number as a new revision.');
-  toast(changed?`${rec.id} saved to Ridion.`:`${rec.id} is already saved — no changes since.`);
+  const rv=rec.revision>1?` (revision ${rec.revision})`:'';
+  let head=changed?`<b>Record ${esc(docId)}${rv} saved successfully to the Records Library.</b> The calendar, timeline, and indexes now include it.`:`<b>Record ${esc(docId)}${rv} is already in the Records Library.</b> Nothing changed since it was saved, so no copy was made.`;
+  if(mode==='pdf'){const ok=await saveBlob(blob,pdfName(rec));head+=ok?' A PDF copy was offered for download.':' The download was cancelled; the record is still stored.'}
+  else if(mode==='print'){if(inArtifact())head+=' Printing is blocked inside this Claude view — use the PDF download instead.';else{$('printRoot').innerHTML=paperHtml(buildModel(rec,'print'));head+=' The print screen is open.';setTimeout(()=>window.print(),120)}}
+  else if(bad)head+=' (Stored as record data: some characters can\'t go in the built-in PDF. Use print for a paper copy.)';
+  let warnStore='';try{warnStore=await App.storageWarning()}catch{}
+  setStatus(warnStore?'warn':'ok',head+(warnStore?`<br>${esc(warnStore)}`:''),[{label:'View Record',primary:true,fn:()=>App.openRecordById(docId)},{label:'New Entry',fn:()=>resetEntry(true)},{label:'Return to Dashboard',fn:()=>App.go('dashboard')}]);
+  toast(changed?`Record ${docId} saved successfully to the Records Library.`:`${docId} is already stored — no changes since.`);
   return true;
- }catch(e){console.error(e);tell('Not saved',(e&&e.message)||String(e));return false}
- finally{saving=false}
+ }catch(e){console.error(e);setStatus('err',`<b>Not saved.</b> ${esc((e&&e.message)||String(e))}<br>Your entry is still here and no number was used.`,[{label:'Try again',primary:true,fn:()=>saveRecord(mode)},{label:'Save as draft',fn:saveDraft}]);return false}
+ finally{saving=false;lockButtons(false)}
+}
+/* Draft: kept encrypted on this device, but not in the Records Library and not numbered. */
+async function saveDraft(){
+ if(saving||!typeKey)return false;saving=true;lockButtons(true);
+ try{
+  if(files.some(it=>it.pending))await Promise.all(files.map(it=>it.pending));
+  const p=plan();const rec=collect(p,'draft');const id=draftId||newSub();
+  await App.saveDraft({id,typeKey,title:rec.title,eventDate:rec.eventDate,prefix:p.prefix,docId:doc?doc.id:'',formLabel:T().label,
+   state:{vals:{...vals},moments:moments.map(m=>({...m})),entryStarted,doc,submission},files:fileList()});
+  draftId=id;draftFp=fingerprint();
+  setStatus('ok',`<b>Draft saved.</b> It's kept encrypted on this device, but it is <b>not</b> in the Records Library yet and has no record number. Open it from the Dashboard any time, then tap <b>Save &amp; Send</b>.`,[{label:'Return to Dashboard',fn:()=>App.go('dashboard')}]);
+  toast('Draft saved — not yet in the Records Library.');return true;
+ }catch(e){console.error(e);setStatus('err',`<b>Draft not saved.</b> ${esc((e&&e.message)||String(e))} Your entry is still here.`);return false}
+ finally{saving=false;lockButtons(false)}
 }
 const download=()=>saveRecord('pdf');
 const doPrint=()=>saveRecord('print');
@@ -563,11 +624,12 @@ function preview(){
  m.banner=(ps.length?`<b>Still needed before you can create it:</b> ${esc(ps.map(x=>x.label.replace(/\?$/,'')).join(', '))}. `:'')+(p.isNew?`This is a preview. <b>${esc(rec.id)}</b> is the next available number — it's assigned when you save, download, or print.`:p.revision>doc.revision?`You changed the form after saving ${esc(rec.id)}. Saving again makes <b>revision ${p.revision}</b> with the same ID.`:`This matches ${esc(rec.id)} revision ${doc.revision}.`);
  $('pvPaper').innerHTML=paperHtml(m);$('rDlgPreview').showModal();$('pvEdit').focus();
 }
-function setStatus(kind,html){const s=$('status');s.className='status'+(kind?' '+kind:'');s.innerHTML=html}
+function setStatus(kind,html,actions){const s=$('status');s.className='status'+(kind?' '+kind:'');s.innerHTML=html;
+ if(actions&&actions.length){const row=h('div',{class:'status-actions'});for(const a of actions)row.append(h('button',{type:'button',class:'btn small'+(a.primary?' primary':''),onclick:a.fn},a.label));s.append(row)}}
 function updateStatus(){
  if(!typeKey)return;const t=T();const p=plan();
- $('nextNo').innerHTML=doc?`Record <b>${doc.id}</b> · revision ${doc.revision}`:`Next number: <b>${code(t.prefix)}</b>`;
- if(!doc)setStatus('',`This will be <b>${code(t.prefix)}</b>. It's saved to your library when you tap Save, Download, or Print.${t.fin&&files.length?` Receipts will be ${[...p.refs.values()].join(', ')}.`:''}`);
+ $('nextNo').innerHTML=(draftId?'<span class="draftchip">Draft</span> ':'')+(doc?`Record <b>${doc.id}</b> · revision ${doc.revision}`:`Next number: <b>${code(t.prefix)}</b>`);
+ if(!doc)setStatus('',`${draftId?'Draft — not yet in the Records Library. ':''}This will be <b>${code(t.prefix)}</b> when you tap <b>Save &amp; Send</b>.${t.fin&&files.length?` Receipts will be ${[...p.refs.values()].join(', ')}.`:''}`);
 }
 function refreshSteps(){
  const s1=$('st1'),s2=$('st2'),s3=$('st3');[s1,s2,s3].forEach(s=>{s.removeAttribute('aria-current');s.classList.remove('done')});
@@ -577,13 +639,51 @@ function refreshSteps(){
 }
 function askClear(){
  if(!dirty()&&!doc){resetEntry(false);return}
- $('clWarn').textContent=doc?(doc.fp===fingerprint()?`${doc.id} is saved in your library.`:`You changed ${doc.id} after saving it. Those changes will be lost.`):'This entry hasn\'t been saved yet.';
+ $('clWarn').textContent=draftId&&draftFp===fingerprint()?'This entry is kept as a draft. Clearing the form does not delete the draft.':doc?(doc.fp===fingerprint()?`${doc.id} is saved in your library.`:`You changed ${doc.id} after saving it. Those changes will be lost.`):'This entry hasn\'t been saved yet.';
  $('dlgClear').showModal();
 }
-function resetEntry(keep){
+function resetEntry(keep,quiet){
  const kept={};if(keep){if(vals.reporter)kept.reporter=vals.reporter;if(vals.children)kept.children=vals.children}
- vals={...kept,date:today()};files=[];moments=[];doc=null;touched=false;entryStarted=null;$('more').open=false;$('printRoot').innerHTML='';
- if(typeKey){renderForm();refreshSteps();$('describe').scrollIntoView({behavior:reduced()?'auto':'smooth'});toast(`Form cleared. The next record will be ${code(T().prefix)}.`)}
+ vals={...kept,date:today()};files=[];moments=[];doc=null;touched=false;entryStarted=null;submission=newSub();draftId=null;draftFp=null;$('more').open=false;$('printRoot').innerHTML='';
+ if(typeKey){renderForm();refreshSteps();if(!quiet){$('describe').scrollIntoView({behavior:reduced()?'auto':'smooth'});toast(`Form cleared. The next record will be ${code(T().prefix)}.`)}}
+}
+const unsaved=()=>!!typeKey&&dirty()&&(!doc||doc.fp!==fingerprint())&&!(draftId&&draftFp===fingerprint());
+async function confirmDiscard(what){return !unsaved()||await ask(what,'The entry on the form has unsaved changes. Continuing clears it. Use Save draft first if you want to keep it.','Continue')}
+/* Start a fresh entry of one form type (used by the Dashboard). */
+async function startType(k){if(!(await confirmDiscard('Start a new entry?')))return false;resetEntry(true,true);return selectType(k)}
+/* Re-open a stored record in the form to make a documented correction (new revision, same ID). */
+const TYPE_OF_PREFIX={INCD:'INC',INC:'INC',CONC:'CONC',PAR:'PAR',COMM:'KCT',KCT:'KCT',EXC:'EXC',EXCH:'EXC',POLI:'PPD',POL:'PPD',PPD:'PPD',EVID:'EVD',EVD:'EVD',CRT:'CRT',MED:'MED',EDU:'EDU',THR:'THR',ACT:'ACT',WEL:'WEL',OBS:'OBS'};
+function typeOfRecord(r){if(r.typeKey&&TYPES[r.typeKey])return r.typeKey;const p=String(r.docId||'').replace(/\d+$/,'');if(p==='FIN')return r.financial?.kind==='matter'?'FINMAT':'FINPAY';return TYPE_OF_PREFIX[p]||null}
+function canEdit(r){return !!r&&r.kind==='record'&&r.isCurrent!==false&&!!typeOfRecord(r)&&['created','manifest-v2','manifest-legacy'].includes(r.method)}
+async function loadRecord(r){
+ if(!canEdit(r)||!(await confirmDiscard('Correct '+r.docId+'?')))return false;
+ const k=typeOfRecord(r);const v={};
+ for(const x of r.fields||[])if(x.key)v[x.key]=String(x.raw??x.value??'');
+ for(const n of r.narrative||[])if(n.key)v[n.key]=n.value||'';
+ v.date=r.eventDate||'';if(r.eventTime&&k!=='EXC'){v.time=r.eventTime;v.timeAcc=r.timeAccuracy==='Approximate'?'Approximate':'Exact'}
+ if(r.location)v.location=r.location;if((r.people||[]).length)v.people=r.people.join('\n');if((r.children||[]).length)v.children=r.children.join(', ');
+ if(r.preparedBy)v.reporter=r.preparedBy;if(r.basis)v.basis=r.basis;
+ const cs=(r.caseRefs||[]).map(c=>c.caseNumber).join(', ');const pr=(r.caseRefs||[])[0]?.proceeding||'';if(cs)v.caseNumber=cs;if(k==='CRT'){if(!v.proceeding&&pr)v.proceeding=pr}else if(pr)v.caseType=pr;
+ if((r.relatedIds||[]).length)v.related=r.relatedIds.join(', ');
+ const auto=TYPES[k].auto?TYPES[k].auto(v):'';if(r.title&&r.title!==auto&&r.title!==TYPES[k].label&&r.titleAutomatic!==true)v.title=r.title;
+ typeKey=k;activeGroup=GROUP_OF(k);vals=v;
+ moments=(r.sequence||[]).map(x=>({when:x.when||'',detail:x.description||'',basis:BASIS.includes(x.basis)?x.basis:BASIS[0]}));
+ files=(r.manifestFiles||[]).map(f=>({uid:++uid,file:null,stored:true,name:f.name||'(file)',size:f.size||0,type:f.mime||'',lastModified:f.lastModified||null,hash:f.sha256||'',note:f.sha256?'':'No fingerprint recorded',ref:f.ref||null}));
+ entryStarted=r.entryStarted||null;submission=newSub();draftId=null;draftFp=null;touched=false;
+ doc={id:r.docId,prefix:String(r.docId).replace(/\d+$/,''),revision:Number(r.revision)||1,fp:null,fileSeq:0,method:'loaded',at:r.generatedAt};
+ $('categoryPicker').open=false;renderCards();renderForm();doc.fp=fingerprint();updateStatus();refreshSteps();
+ setStatus('',`Correcting <b>${esc(r.docId)}</b> (revision ${doc.revision}). Change what needs correcting and tap <b>Save &amp; Send</b>: it keeps the ID ${esc(r.docId)}, becomes revision ${doc.revision+1}, and the earlier version stays in the library unchanged.`);
+ return true;
+}
+/* Resume a saved draft. */
+async function loadDraft(d){
+ if(!(await confirmDiscard('Open this draft?')))return false;
+ typeKey=TYPES[d.typeKey]?d.typeKey:'INC';activeGroup=GROUP_OF(typeKey);const st=d.state||{};
+ vals={...(st.vals||{})};moments=(st.moments||[]).map(m=>({when:m.when||'',detail:m.detail||'',basis:m.basis||BASIS[0]}));entryStarted=st.entryStarted||null;doc=st.doc||null;submission=st.submission||newSub();draftId=d.id;touched=true;
+ files=(d.files||[]).map(x=>({uid:++uid,file:x.bytes?new File([x.bytes],x.name,{type:x.type&&x.type!=='Unknown type'?x.type:'',lastModified:x.lastModified?Date.parse(x.lastModified)||Date.now():Date.now()}):null,stored:!!x.stored,name:x.name,size:x.size,type:x.type,lastModified:x.lastModified,hash:x.hash||'',note:x.hash?'':'Not calculated',ref:x.ref||null}));
+ $('categoryPicker').open=false;renderCards();renderForm();draftFp=fingerprint();refreshSteps();
+ setStatus('',`Draft opened. It isn't in the Records Library yet — tap <b>Save &amp; Send</b> to store it${doc?` as revision ${doc.revision+1} of ${esc(doc.id)}`:''}.`);
+ return true;
 }
 
 /* ---------- numbers, backups, checking PDFs ---------- */
@@ -644,20 +744,24 @@ function bind(){
  $('addMoment').addEventListener('click',()=>{moments.push({when:'',detail:'',basis:BASIS[0]});renderMoments();const ins=$('seqList').querySelectorAll('input');ins[ins.length-1]?.focus()});
  $('btnDownload').addEventListener('click',download);$('btnPreview').addEventListener('click',preview);$('btnPrint').addEventListener('click',doPrint);
  $('pvEdit').addEventListener('click',()=>$('rDlgPreview').close());$('pvDownload').addEventListener('click',()=>{$('rDlgPreview').close();saveRecord('save')});
+ $('btnDraft').addEventListener('click',saveDraft);
  $('btnClear').addEventListener('click',askClear);$('clCancel').addEventListener('click',()=>$('dlgClear').close());$('clOk').addEventListener('click',()=>{$('dlgClear').close();resetEntry($('keepNames').checked)});
  $('ucBack').addEventListener('click',()=>$('dlgUnicode').close());$('ucPrint').addEventListener('click',()=>{$('dlgUnicode').close();doPrint()});
  document.querySelectorAll('dialog.rx [data-close]').forEach(b=>b.addEventListener('click',()=>b.closest('dialog').close()));
  $('btnSave').addEventListener('click',()=>saveRecord('save'));
  $('btnRun').addEventListener('click',()=>App.runReport());
  $('nmSave').addEventListener('click',saveNumbers);
- window.addEventListener('beforeunload',e=>{if(typeKey&&dirty()&&(!doc||doc.fp!==fingerprint())){e.preventDefault();e.returnValue=''}});
+ window.addEventListener('beforeunload',e=>{if(unsaved()){e.preventDefault();e.returnValue=''}});
 }
 bind();
 window.Record={
  onUnlock(){syncCounters();if(!typeKey){typeKey='INC';activeGroup='INC';vals.date=today();renderForm()}renderCards();updateStatus()},
  render(){syncCounters();if(typeKey){updateStatus();renderFiles()}},
- hasUnsaved(){return !!typeKey&&dirty()&&(!doc||doc.fp!==fingerprint())},
- save(){return saveRecord('save')},
+ hasUnsaved:unsaved,
+ save(){return saveRecord('save')},saveDraft,startType,loadRecord,loadDraft,canEdit,
+ draftId:()=>draftId,
+ formTypes:()=>GROUPS.filter(G=>G.core).map(G=>({key:G.leaf,label:G.label,desc:G.desc,prefix:TYPES[G.leaf].prefix,color:groupColor(G.g)})),
+ colorLegend:()=>GROUPS.map(G=>({label:G.label,color:groupColor(G.g)})),
  openNumbers(){syncCounters();openNumbers()},exportBackup,importBackup,
  guide:()=>GUIDE
 };
