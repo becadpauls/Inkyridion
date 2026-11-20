@@ -289,7 +289,7 @@ function renderForm(){
  fb.classList.toggle('prominent',kind!=='support');
  $('filesTitle').textContent=kind==='evidence'?'Evidence files':kind==='receipts'?'Receipts or payment proof':'Supporting evidence';
  $('fileBtnText').textContent=kind==='receipts'?'＋ Add receipts':'Attach evidence';
- $('filesNote').textContent=kind==='receipts'?'Each receipt gets its own RCP number. The original file stays on your device and is not put inside the PDF — keep it.':'Add a photo, screenshot, document, or recording. Ridion links the file to this record.';
+ $('filesNote').textContent=kind==='receipts'?'Each receipt gets its own RCP number. The original file stays on your device and is not put inside the PDF — keep it.':'Add a photo, screenshot, document, or recording. Inskrypity links the file to this record.';
  renderFiles();refreshWhen();updateMoreHint();updateStatus();
 }
 function updateMoreHint(){
@@ -426,7 +426,7 @@ function buildModel(rec,mode){
  return m;
 }
 function paperHtml(m){
- let o=`<div class="rpaper" style="--pa:${m.accent};--pf:${m.fill}"><div class="docband"><img src="assets/logo.webp" alt="Inkyridion" class="doclogo"><div class="kick"><span>${esc(m.kicker)}</span><span>${esc(m.mode==='preview'&&m.banner?'PREVIEW':m.id)}</span></div></div>`;
+ let o=`<div class="rpaper" style="--pa:${m.accent};--pf:${m.fill}"><div class="docband"><img src="assets/logo.webp" alt="Inskrypity" class="doclogo"><div class="kick"><span>${esc(m.kicker)}</span><span>${esc(m.mode==='preview'&&m.banner?'PREVIEW':m.id)}</span></div></div>`;
  o+=`<div class="hd">${esc(m.heading)}</div><h1>${esc(m.title)}</h1><div class="idl">${esc(m.idLine)}</div>`;
  if(m.banner)o+=`<div class="pv">${m.banner}</div>`;
  for(const s of m.sections){

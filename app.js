@@ -111,7 +111,7 @@ function setMode(m) {
   $('authHint').textContent = create ? 'Create a passphrase to set up your private library on this device. It encrypts everything you import.' : 'Enter your passphrase to unlock.';
   $('passHelp').textContent = create ? 'At least 12 characters. A short sentence works well. If you forget it, the library can\'t be recovered — so you\'ll also want backups.' : '';
   $('authBtn').textContent = create ? 'Create library' : 'Unlock';
-  $('authTitle').textContent = create ? 'Welcome to Inkyridion' : 'Welcome back';
+  $('authTitle').textContent = create ? 'Welcome to Inskrypity' : 'Welcome back';
   $('pass').setAttribute('autocomplete', create ? 'new-password' : 'current-password');
   $('auth').classList.remove('hidden'); $('app').classList.add('hidden');
   setTimeout(() => $('pass').focus(), 50);
@@ -452,7 +452,7 @@ async function renderOverview() {
   const cur = current(); const recs = cur.filter(r => r.kind === 'record'); const inv = evidenceInventory(cur); const nr = R.filter(r => r.status === 'needs-review').length;
   const dates = cur.map(r => r.eventDate).filter(Boolean).sort(); const lb = S.lastBackup;
   const stat = (n, l, c, sub = '', ic = '') => `<div class="stat" style="--c:${c}">${ic ? `<span class="ic" aria-hidden="true">${ic}</span>` : ''}<b>${n}</b><span>${l}${sub ? '<br>' + sub : ''}</span></div>`;
-  $('stats').innerHTML = !R.length ? `<div class="empty" style="grid-column:1/-1">Nothing here yet. Records you save on <b>Inky</b> appear here automatically. You can also import PDFs, photos, and receipts below.</div>` :
+  $('stats').innerHTML = !R.length ? `<div class="empty" style="grid-column:1/-1">Nothing here yet. Records you store with <b>Save &amp; Send</b> appear here automatically. You can also import PDFs, photos, and receipts below.</div>` :
     stat(recs.length, 'Records', '#2a2a2e', dates.length ? `${esc(fmtDate(dates[0]))} – ${esc(fmtDate(dates[dates.length - 1]))}` : '', '📚') + stat(new Set(cur.map(groupOf)).size, 'Categories', GROUPS.comms.color, '', '🗂') +
     stat(inv.length, 'Evidence items', GROUPS.evidence.color, inv.filter(x => x.missing).length ? `${inv.filter(x => x.missing).length} not yet uploaded` : '', '📎') + stat(allCases().length, 'Case numbers', GROUPS.court.color, '', '⚖️') +
     stat(nr, 'Need review', '#a8743f', nr ? 'Filter: Needs review' : 'All checked', '🔎') + stat(lb ? esc(fmtDate(lb.at.slice(0, 10))) : 'Never', 'Last backup', GROUPS.parenting.color, lb ? (lb.verified ? 'Tested ✓' : 'Not tested yet') : 'Back up soon', '🛡');
@@ -791,11 +791,11 @@ function buildBlocks(recs, o) {
 }
 function blocksHtml(B, o) {
   const pages = [[]]; for (const b of B) { if (b.t === 'break') pages.push([]); else pages[pages.length - 1].push(b); }
-  const head = `<div class="pg-head"><img class="pg-logo" src="assets/logo.webp" alt="Inkyridion"><span>DOCUMENTATION REPORT</span><span>${esc(o.pkt)}</span></div>`; const foot = `<div class="pg-foot">${esc(o.pkt)} · Generated ${esc(stamp(o.generated))} · Source digest ${esc(o.digest.slice(0, 12))}</div>`;
+  const head = `<div class="pg-head"><img class="pg-logo" src="assets/logo.webp" alt="Inskrypity"><span>DOCUMENTATION REPORT</span><span>${esc(o.pkt)}</span></div>`; const foot = `<div class="pg-foot">${esc(o.pkt)} · Generated ${esc(stamp(o.generated))} · Source digest ${esc(o.digest.slice(0, 12))}</div>`;
   const cell = c => esc(c);
   return pages.filter(p => p.length).map(p => `<div class="paper${o.watermark ? ' wm' : ''}" style="--pa:${L.DOC.head};--wm:${(o.watermark || 0) * 0.07}">${head}${p.map(b => {
     if (b.t === 'legend') return `<div class="plegend">${b.items.map(it => `<span><i style="background:${it.color}"></i>${esc(it.label)} <em>${esc(it.name)}</em></span>`).join('')}</div>`;
-    if (b.t === 'cover') return `<div class="cover-logo"><img src="assets/logo.webp" alt="Inkyridion"></div><h1>${esc(b.title)}</h1><div class="pkv cover-meta">${b.rows.map(([k, v]) => `<div class="k">${esc(k)}</div><div>${esc(v)}</div>`).join('')}</div><p class="pl" style="margin-top:20px">Contents</p><ol>${b.contents.map(c => `<li>${esc(c)}</li>`).join('')}</ol><p class="cover-note">${esc(b.note)}</p>`;
+    if (b.t === 'cover') return `<div class="cover-logo"><img src="assets/logo.webp" alt="Inskrypity"></div><h1>${esc(b.title)}</h1><div class="pkv cover-meta">${b.rows.map(([k, v]) => `<div class="k">${esc(k)}</div><div>${esc(v)}</div>`).join('')}</div><p class="pl" style="margin-top:20px">Contents</p><ol>${b.contents.map(c => `<li>${esc(c)}</li>`).join('')}</ol><p class="cover-note">${esc(b.note)}</p>`;
     if (b.t === 'sec') return `<div class="sec" style="--sc:${b.color || L.PAL.moodyBlue}">${esc(b.title)}</div>`;
     if (b.t === 'sub') return `<div class="subh" style="--sc:${b.color}"><span>${esc(b.title)}</span><span>${esc(b.right || '')}</span></div>`;
     if (b.t === 'kv') return `<div class="pkv">${b.rows.map(([k, v]) => `<div class="k">${esc(k)}</div><div>${esc(v)}</div>`).join('')}</div>`;
@@ -835,7 +835,7 @@ async function packetOptions(assign) {
   return { recs, o: { title: $('pkTitle').value.trim() || 'Documentation Report', from, to, narr: $('pkNarr').checked, follow: $('pkFollow').checked, kids: $('pkKids').checked, watermark: mark ? Number($('pkOpacity').value) / 100 : 0, generated: new Date().toISOString(), digest: await sourceDigest(recs), pkt: assign ? await takePkt() : peekPkt() + ' (preview)' } };
 }
 async function runReport() {
-  if (!R.length) { msg('Nothing to report yet', '<p>Save a record on <b>Inky</b> (or import documents in the Library) first.</p>'); return; }
+  if (!R.length) { msg('Nothing to report yet', '<p>Store a record with <b>Save &amp; Send</b> (or import documents in the Library) first.</p>'); return; }
   busy('Gathering every record and building your report…');
   try {
     const { recs, o } = await packetOptions(false); const B = buildBlocks(recs, o); let pages = null, bad = null;
@@ -1012,10 +1012,10 @@ async function renderSettings() {
   const hist = [...(S.imports || [])].reverse().slice(0, 12);
   $('importHist').innerHTML = (hist.length ? hist.map(h => `<div>${esc(stamp(h.at))} — ${h.count} file(s)</div>`).join('') : 'No imports yet.') + ((S.packets || []).length ? `<p style="margin-top:10px"><b>Reports made:</b> ${S.packets.slice(-8).reverse().map(p => esc(p.id + ' (' + p.kind + ')')).join(', ')}</p>` : '');
 }
-const GUIDE = `<h3>1. Create</h3><p>From the <b>Dashboard</b>, choose a documentation form: Incident Report (INCD), Concerns Raised (CONC), Communication Log (COMM), Evidence Intake (EVID), Police Report (POL), or Parenting Exchange (EXCH). Other record types are on <b>Inky</b>. Fill in the starred items, attach evidence if you like, and link related records with <b>＋ Link a stored record</b>.</p>
+const GUIDE = `<h3>1. Create</h3><p>From the <b>Dashboard</b>, choose a documentation form: Incident Report (INCD), Concerns Raised (CONC), Communication Log (COMM), Evidence Intake (EVID), Police Report (POL), or Parenting Exchange (EXCH). Other record types are under <b>New Entry</b>. Fill in the starred items, attach evidence if you like, and link related records with <b>＋ Link a stored record</b>.</p>
 <h3>2. Save &amp; Send</h3><p><b>Save &amp; Send</b> checks the required fields, gives the record its number (for example INCD005), and stores it with its attachments in your encrypted Records Library in one step. You'll see “Record INCD005 saved successfully to the Records Library.” only after it is really stored. Pressing it twice never makes two copies. Save &amp; Send stores the record on this device only — it does not send anything to another person, server, attorney, or court.</p>
 <p><b>Save draft</b> keeps an unfinished entry, encrypted, without adding it to the Records Library or using a number. Drafts are listed on the Dashboard.</p>
-<h3>3. Store &amp; organize</h3><p>Stored records appear right away in the Records Library, the Ridion calendar and timeline, the master index, and the evidence index. Open a record to link it to others (links show on both records), mark it <b>Ready for Report</b>, or <b>Correct this record</b>: a correction keeps the same ID as a new revision, and the earlier version stays unchanged.</p>
+<h3>3. Store &amp; organize</h3><p>Stored records appear right away in the Records Library, the calendar and timeline, the master index, and the evidence index. Open a record to link it to others (links show on both records), mark it <b>Ready for Report</b>, or <b>Correct this record</b>: a correction keeps the same ID as a new revision, and the earlier version stays unchanged.</p>
 <h3>4. Generate a report</h3><p>Open <b>Reports</b>, check the dates and cases (or tick “Only records marked Ready for Report”), then tap <b>Generate Report</b>. Records that appear in a generated report show <b>Included in Report</b>. Reports never change or delete their source records.</p>
 <h3>Backups</h3><p>Your library lives only in this browser on this device. In <b>Settings</b>, use <b>Download encrypted backup</b>, then <b>Test a backup</b>. Backups include records, files, and drafts. Keep two copies in different places. A forgotten passphrase can't be recovered.</p>
 <h3>Good to know</h3><p>Reports and ZIP files are not encrypted, so check what's included before sharing. A report is an organizational summary — not a court-issued or certified document. Write only what you saw, heard, or were told, and say which. The direct PDF uses standard Western characters; use Print for other scripts or emoji.</p>`;
