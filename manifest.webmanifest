@@ -1,7 +1,7 @@
 {
-  "name": "Inkyridion",
-  "short_name": "Inkyridion",
-  "description": "Create records, keep them organized, and run court-ready reports",
+  "name": "Inskrypity",
+  "short_name": "Inskrypity",
+  "description": "Document, organize, store, retrieve: private court documentation",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
