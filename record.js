@@ -66,7 +66,7 @@ const KCT_H={'Phone call':'PHONE CALLS','Video call':'VIDEO CALLS','Text message
 const withKids=(base,v)=>base+(v.children?` — ${v.children}`:'');
 
 const TYPES={
-INC:{prefix:'INCD',group:'INC',label:'Incident Report',heading:v=>(v.wording||'Event').toUpperCase(),seq:true,req:['date','narrative'],account:'Account of events',
+INC:{prefix:'INCD',group:'INC',label:'Incident Report',heading:v=>v.wording?v.wording.toUpperCase():'INCIDENT REPORT',seq:true,req:['date','narrative'],account:'Account of events',
  ess:[ta('narrative','What happened?',{tall:1,ph:'Describe what you saw, heard, or were told.',pl:'Account of events'}),DATE('Date it happened'),TIME()],
  more:[T_TITLE,chips('incType','Type of incident',['Safety concern','Unwanted contact','Disagreement','Property damage','Other']),LOC(),PEOPLE(),QUOTES,f('witnesses','Witnesses','text',{ph:'Names'}),ta('effects','Injuries or damage',{rows:2,pl:'Observable effects'}),OUT('What happened afterward?'),FOLLOW,...tail('title')],
  auto:v=>v.incType||String(v.narrative||'Incident').trim().split(/\s+/).slice(0,9).join(' ')},
@@ -370,7 +370,7 @@ function collect(p,output){
  const fileRows=files.map(it=>({ref:p.refs.get(it.uid),role:t.fin?'receipt':'evidence',name:it.name,size:it.size,mime:it.type,lastModified:it.lastModified,sha256:it.hash||null,hashNote:it.hash?'':it.note,originalIncluded:false}));
  const title=g('title')||(t.auto?t.auto(vals):'')||t.label;
  return {
-  id:p.id,prefix:p.id.replace(/\d+$/,''),number:Number(p.id.replace(/^\D+/,'')),typeKey,category:GROUPS.find(G=>G.g===t.group).label,subcategory:t.label,heading:typeKey==='INC'?(vals.wording||'Event').toUpperCase():t.heading(vals),
+  id:p.id,prefix:p.id.replace(/\d+$/,''),number:Number(p.id.replace(/^\D+/,'')),typeKey,category:GROUPS.find(G=>G.g===t.group).label,subcategory:t.label,heading:t.heading(vals),
   title,titleAutomatic:!g('title'),eventDate:v('date'),eventTime,timeAccuracy,timeZone:TZ,
   entryStarted:entryStarted||new Date().toISOString(),generatedAt:new Date().toISOString(),revision:p.revision,isNew:p.isNew,output,
   preparedBy:g('reporter'),basis:g('basis'),location:g('location'),
@@ -412,7 +412,7 @@ function buildModel(rec,mode){
   m.sections.push({title:'Record information',kind:'kv',rows:[['Document ID',idShown],['Document type',rec.heading],[term+' date',fmtDate(rec.eventDate,true)],['Time',timeText],['Location',rec.location],['Child or children',rec.childrenText],['People involved',rec.peopleText],['Prepared by',rec.preparedBy],['How the preparer knows',rec.basis],['Case number(s)',caseText],['Case type',rec.caseType],['Related records',relText],['Entry started',stamp(rec.entryStarted)],['Timing of entry',timing],['Document created',created],['Revision',revText]]});
   if(rec.fields.length)m.sections.push({title:(rec.typeKey==='INC'?term:t.label)+' details',kind:'kv',rows:rec.fields.map(x=>[x.label,x.value])});
   const main=rec.narrative.filter(n=>!['outcome','followup'].includes(n.key));const after=rec.narrative.filter(n=>['outcome','followup'].includes(n.key));
-  if(main.length)m.sections.push({title:'Account of the '+term.toLowerCase(),kind:'paras',items:main.map(n=>[n.label,n.value])});
+  if(main.length)m.sections.push({title:rec.typeKey==='EVD'?'Evidence description':'Account of the '+term.toLowerCase(),kind:'paras',items:main.map(n=>[n.label,n.value])});
   if(rec.sequence.length)m.sections.push({title:term+' sequence',kind:'seq',items:rec.sequence});
   if(after.length)m.sections.push({title:'Outcome and follow-up',kind:'paras',items:after.map(n=>[n.label,n.value])});
   if(rec.files.length)m.sections.push({title:t.files==='evidence'?'Evidence files':'Supporting file references',kind:'table',cols:[{h:'Reference',w:.18},{h:'Original file',w:.32},{h:'Size / type',w:.18},{h:'SHA-256 fingerprint',w:.32}],rows:rec.files.map(x=>[x.ref,x.name,`${fmtSize(x.size)}\n${x.mime}`,x.sha256||x.hashNote])});

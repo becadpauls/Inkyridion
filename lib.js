@@ -176,7 +176,7 @@ const Lib = (() => {
         y = TOP;
       },
       section(title, col = accent) { A.ensure(80); y += 6; A.rect(ML, y, 4, 16, col); A.text(String(title).toUpperCase(), ML + 12, y + 12.5, 11, true, NAVY); y += 22; A.line(ML, y, MR, y); y += 8; },
-      sub(title, col = accent, right = '') { A.ensure(60); y += 8; A.rect(ML, y, CW, 22, col); A.text(title, ML + 8, y + 15, 10.5, true, '#ffffff'); if (right) A.text(right, MR - 8 - tw(right, 9, false), y + 15, 9, false, '#ffffff'); y += 28; },
+      sub(title, col = accent, right = '') { A.ensure(60); y += 8; A.rect(ML, y, CW, 22, col); const maxW = CW - 16 - (right ? tw(right, 9, false) + 14 : 0); let tt = String(title); if (tw(tt, 10.5, true) > maxW) { while (tt.length > 1 && tw(tt + '\u2026', 10.5, true) > maxW) tt = tt.slice(0, -1); tt = tt.trimEnd() + '\u2026'; } A.text(tt, ML + 8, y + 15, 10.5, true, '#ffffff'); if (right) A.text(right, MR - 8 - tw(right, 9, false), y + 15, 9, false, '#ffffff'); y += 28; },
       kv(label, value, LW = 150) {
         const L = wrap(label, LW - 14, 8.6, true); let V = wrap(value, CW - LW - 14, 10, false); let first = true;
         while (V.length) { const n = Math.floor((A.room() - 10) / 13.8); if (n < Math.min(2, V.length)) { A.newPage(); continue; }
